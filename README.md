@@ -25,6 +25,8 @@ allow rule.
 The `tachikoma` terminal client uses that Unix-socket Connect API. For example,
 `tachikoma status`, `tachikoma queue`, and `tachikoma approve <proposal-id>`
 never write the SQLite database directly.
+`tachikoma tui` presents that same queue in a native terminal UI; `q` or Escape
+closes it.
 
 `tachikoma suggest-kubectl --context development -- get pods` is the first
 Kubernetes-ready adapter path. It creates a review-only proposal and does not

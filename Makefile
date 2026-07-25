@@ -23,4 +23,5 @@ test-docker:
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock status | grep -F 'opensnitch:' >/dev/null; \
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock policy upsert kubectl-development-read --adapter kubernetes --action review_kubectl_observation --scope '{"context":"development"}' --mode automatic --risk-ceiling low; \
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock suggest-kubectl --context development -- get pods; \
-		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue | grep -F 'kubernetes' >/dev/null
+		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue | grep -F 'kubernetes' >/dev/null; \
+		docker compose exec --no-TTY tachikoma tachikoma tui --help | grep -F 'terminal UI' >/dev/null

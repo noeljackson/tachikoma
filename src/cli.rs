@@ -34,6 +34,8 @@ enum Command {
     Status,
     /// List proposals in the durable queue.
     Queue,
+    /// Open a local terminal UI snapshot of the queue; q or Escape closes it.
+    Tui,
     /// Approve one reviewable proposal.
     Approve { id: String },
     /// Reject one reviewable proposal.
@@ -146,6 +148,27 @@ async fn main() -> Result<()> {
                     proposal.id, proposal.state, proposal.adapter, proposal.action, proposal.risk
                 );
             }
+        }
+        Command::Tui => {
+            let response = ProposalServiceClient::new(transport, config)
+                .list_proposals(ListProposalsRequest::default())
+                .await?
+                .into_owned();
+            let lines = response
+                .proposals
+                .into_iter()
+                .map(|proposal| {
+                    format!(
+                        "{}  {:?}  {}/{}  {}",
+                        proposal.id,
+                        proposal.state,
+                        proposal.adapter,
+                        proposal.action,
+                        proposal.risk
+                    )
+                })
+                .collect::<Vec<_>>();
+            tachikoma::tui::run(&lines)?;
         }
         Command::Approve { id } => {
             let proposal = ProposalServiceClient::new(transport, config)
