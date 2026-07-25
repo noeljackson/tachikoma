@@ -8,8 +8,12 @@ use http::{Request, header::HOST};
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use tachikoma::proto::tachikoma::v1::{
-    ApproveProposalRequest, GetStatusRequest, ListProposalsRequest, ProposalServiceClient,
-    RejectProposalRequest, StatusServiceClient,
+    ApproveProposalRequest, CreateProposalRequest, GetStatusRequest, ListProposalsRequest,
+    ProposalServiceClient, RejectProposalRequest, StatusServiceClient,
+};
+use tachikoma::{
+    adapter::ObservationAdapter,
+    kubernetes::{KubernetesCommand, KubernetesCommandAdapter},
 };
 
 #[derive(Debug, Parser)]
@@ -36,6 +40,15 @@ enum Command {
         id: String,
         #[arg(long, default_value = "rejected from terminal client")]
         reason: String,
+    },
+    /// Turn a kubectl command observation into a review-only proposal.
+    SuggestKubectl {
+        #[arg(long)]
+        context: Option<String>,
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(required = true, trailing_var_arg = true)]
+        arguments: Vec<String>,
     },
 }
 
@@ -135,6 +148,36 @@ async fn main() -> Result<()> {
                 .into_option()
                 .ok_or_else(|| anyhow::anyhow!("server returned no proposal"))?;
             println!("{} rejected", proposal.id);
+        }
+        Command::SuggestKubectl {
+            context,
+            namespace,
+            arguments,
+        } => {
+            let draft = KubernetesCommandAdapter
+                .draft(&KubernetesCommand {
+                    arguments,
+                    context,
+                    namespace,
+                })
+                .expect("required command arguments produce a draft");
+            let proposal = ProposalServiceClient::new(transport, config)
+                .create_proposal(CreateProposalRequest {
+                    adapter: draft.adapter,
+                    action: draft.action,
+                    risk: draft.risk,
+                    evidence_json: draft.evidence_json,
+                    preview: draft.preview,
+                    rollback: draft.rollback,
+                    idempotency_key: draft.idempotency_key,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned()
+                .proposal
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no proposal"))?;
+            println!("{} queued for review", proposal.id);
         }
     }
     Ok(())

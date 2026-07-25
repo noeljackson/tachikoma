@@ -83,6 +83,40 @@ fn internal(error: impl std::fmt::Display) -> ConnectError {
     ConnectError::new(ErrorCode::Internal, error.to_string())
 }
 
+fn validate_policy(policy: &AutomationPolicy) -> Result<(), ConnectError> {
+    if policy.id.is_empty()
+        || policy.adapter.is_empty()
+        || policy.action.is_empty()
+        || policy.scope.is_empty()
+        || !matches!(policy.mode.as_str(), "review" | "automatic")
+        || !matches!(policy.risk_ceiling.as_str(), "low" | "medium" | "high")
+    {
+        return Err(ConnectError::new(
+            ErrorCode::InvalidArgument,
+            "policy id, adapter, action, JSON scope, mode (review|automatic), and risk ceiling (low|medium|high) are required",
+        ));
+    }
+    let scope = serde_json::from_str::<serde_json::Value>(&policy.scope).map_err(|_| {
+        ConnectError::new(
+            ErrorCode::InvalidArgument,
+            "policy scope must be a JSON object",
+        )
+    })?;
+    if !scope.is_object() || scope.as_object().is_some_and(|value| value.is_empty()) {
+        return Err(ConnectError::new(
+            ErrorCode::InvalidArgument,
+            "policy scope must contain at least one explicit constraint",
+        ));
+    }
+    if policy.mode == "automatic" && policy.risk_ceiling != "low" {
+        return Err(ConnectError::new(
+            ErrorCode::InvalidArgument,
+            "automatic policies are limited to a low risk ceiling",
+        ));
+    }
+    Ok(())
+}
+
 impl ProposalService for ProposalApi {
     #[allow(clippy::manual_async_fn)]
     fn list_proposals<'a>(
@@ -240,17 +274,7 @@ impl AutomationPolicyService for ProposalApi {
             .ok_or_else(|| ConnectError::new(ErrorCode::InvalidArgument, "policy is required"));
         async move {
             let policy = policy?;
-            if policy.id.is_empty()
-                || policy.adapter.is_empty()
-                || policy.action.is_empty()
-                || policy.scope.is_empty()
-                || !matches!(policy.mode.as_str(), "review" | "automatic")
-            {
-                return Err(ConnectError::new(
-                    ErrorCode::InvalidArgument,
-                    "policy id, adapter, action, scope, and mode (review|automatic) are required",
-                ));
-            }
+            validate_policy(&policy)?;
             let record = AutomationPolicyRecord {
                 id: policy.id,
                 adapter: policy.adapter,
@@ -290,14 +314,53 @@ impl StatusService for StatusApi {
                 .map_err(internal)?;
             Response::ok(GetStatusResponse {
                 version: env!("CARGO_PKG_VERSION").to_owned(),
-                adapters: vec![AdapterStatus {
-                    name: "opensnitch".to_owned(),
-                    enabled: self.opensnitch_enabled,
-                    detail: format!("proposal store ready ({proposal_count} proposals)"),
-                    ..Default::default()
-                }],
+                adapters: vec![
+                    AdapterStatus {
+                        name: "opensnitch".to_owned(),
+                        enabled: self.opensnitch_enabled,
+                        detail: format!("proposal store ready ({proposal_count} proposals)"),
+                        ..Default::default()
+                    },
+                    AdapterStatus {
+                        name: "kubernetes".to_owned(),
+                        enabled: true,
+                        detail: "command observation is available; cluster execution is disabled"
+                            .to_owned(),
+                        ..Default::default()
+                    },
+                ],
                 ..Default::default()
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_policy;
+    use crate::proto::tachikoma::v1::AutomationPolicy;
+
+    fn policy() -> AutomationPolicy {
+        AutomationPolicy {
+            id: "only-local-kubectl-read".into(),
+            adapter: "kubernetes".into(),
+            action: "review_kubectl_observation".into(),
+            scope: r#"{"context":"development","namespace":"default"}"#.into(),
+            mode: "review".into(),
+            risk_ceiling: "low".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn policy_scope_must_be_narrow_and_automatic_is_low_risk_only() {
+        assert!(validate_policy(&policy()).is_ok());
+        let mut invalid_scope = policy();
+        invalid_scope.scope = "{}".into();
+        assert!(validate_policy(&invalid_scope).is_err());
+        let mut broad_automatic = policy();
+        broad_automatic.mode = "automatic".into();
+        broad_automatic.risk_ceiling = "medium".into();
+        assert!(validate_policy(&broad_automatic).is_err());
     }
 }

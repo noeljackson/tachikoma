@@ -25,3 +25,13 @@ allow rule.
 The `tachikoma` terminal client uses that Unix-socket Connect API. For example,
 `tachikoma status`, `tachikoma queue`, and `tachikoma approve <proposal-id>`
 never write the SQLite database directly.
+
+`tachikoma suggest-kubectl --context development -- get pods` is the first
+Kubernetes-ready adapter path. It creates a review-only proposal and does not
+load kubeconfig, contact a cluster, or execute `kubectl`; a future `kube-rs`
+executor must remain a separately scoped capability.
+
+Automation policies are JSON-scoped durable intent, not generic shell or
+network permission. They must name a non-empty scope; an `automatic` policy is
+limited to low-risk proposals and still cannot execute anything until a future
+adapter-specific executor is explicitly installed and enabled.

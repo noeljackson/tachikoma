@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::json;
 
+use crate::adapter::{ObservationAdapter, ProposalDraft};
 use crate::store::ProposalRecord;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,52 +46,63 @@ pub fn recent_connections(database: &Path, limit: usize) -> Result<Vec<Connectio
 /// Convert an OpenSnitch denial into a review-only proposal. This adapter never
 /// writes OpenSnitch rules and intentionally ignores allowed traffic: a denial
 /// is a useful prompt for human review, not authority to create an allow rule.
+pub struct OpenSnitchAdapter;
+
+impl ObservationAdapter for OpenSnitchAdapter {
+    type Observation = ConnectionSignal;
+
+    fn name(&self) -> &'static str {
+        "opensnitch"
+    }
+
+    fn draft(&self, signal: &ConnectionSignal) -> Option<ProposalDraft> {
+        if !signal.action.eq_ignore_ascii_case("deny") {
+            return None;
+        }
+
+        let target = if signal.destination_port > 0 {
+            format!("{}:{}", signal.destination_host, signal.destination_port)
+        } else {
+            signal.destination_host.clone()
+        };
+        let evidence_json = json!({
+            "time": signal.time,
+            "action": signal.action,
+            "process": signal.process,
+            "destination_host": signal.destination_host,
+            "destination_port": signal.destination_port,
+            "matched_rule": signal.rule,
+        })
+        .to_string();
+        Some(ProposalDraft {
+            adapter: self.name().into(),
+            action: "review_denied_connection".into(),
+            risk: "medium".into(),
+            evidence_json,
+            preview: format!(
+                "Review denied connection from {} to {target}. No OpenSnitch rule will be changed automatically.",
+                signal.process
+            ),
+            rollback:
+                "No action has been executed; rejecting or expiring this proposal changes nothing."
+                    .into(),
+            idempotency_key: format!(
+                "opensnitch-deny:{}:{}:{}:{}",
+                signal.time, signal.process, signal.destination_host, signal.destination_port
+            ),
+        })
+    }
+}
+
 pub fn denial_proposal(
     signal: &ConnectionSignal,
     id: String,
     created_at: String,
     expires_at_unix: i64,
 ) -> Option<ProposalRecord> {
-    if !signal.action.eq_ignore_ascii_case("deny") {
-        return None;
-    }
-
-    let target = if signal.destination_port > 0 {
-        format!("{}:{}", signal.destination_host, signal.destination_port)
-    } else {
-        signal.destination_host.clone()
-    };
-    let evidence_json = json!({
-        "time": signal.time,
-        "action": signal.action,
-        "process": signal.process,
-        "destination_host": signal.destination_host,
-        "destination_port": signal.destination_port,
-        "matched_rule": signal.rule,
-    })
-    .to_string();
-    Some(ProposalRecord {
-        id,
-        adapter: "opensnitch".into(),
-        action: "review_denied_connection".into(),
-        state: "awaiting_review".into(),
-        risk: "medium".into(),
-        evidence_json,
-        preview: format!(
-            "Review denied connection from {} to {target}. No OpenSnitch rule will be changed automatically.",
-            signal.process
-        ),
-        rollback:
-            "No action has been executed; rejecting or expiring this proposal changes nothing."
-                .into(),
-        idempotency_key: format!(
-            "opensnitch-deny:{}:{}:{}:{}",
-            signal.time, signal.process, signal.destination_host, signal.destination_port
-        ),
-        expires_at_unix,
-        created_at: created_at.clone(),
-        updated_at: created_at,
-    })
+    OpenSnitchAdapter
+        .draft(signal)
+        .map(|draft| draft.into_record(id, created_at, expires_at_unix))
 }
 
 #[cfg(test)]
