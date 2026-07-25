@@ -60,10 +60,7 @@ fn default_database() -> std::path::PathBuf {
 fn default_rpc_socket() -> std::path::PathBuf {
     dirs::runtime_dir()
         .unwrap_or_else(|| {
-            default_database()
-                .parent()
-                .expect("state parent")
-                .to_path_buf()
+            dirs::state_dir().unwrap_or_else(|| std::path::PathBuf::from(".local/state"))
         })
         .join("tachikoma")
         .join("tachikoma.sock")

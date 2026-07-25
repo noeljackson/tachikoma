@@ -19,4 +19,6 @@ test-docker:
 		docker compose up --build --detach; \
 		trap 'docker compose down --volumes --remove-orphans' EXIT; \
 		until curl --fail --silent --show-error http://127.0.0.1:17447/health >/dev/null; do sleep 1; done; \
-		curl --fail --silent --show-error http://127.0.0.1:17447/ | grep -F 'Local policy proposal queue.' >/dev/null
+		curl --fail --silent --show-error http://127.0.0.1:17447/ | grep -F 'Local policy proposal queue.' >/dev/null; \
+		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock status | grep -F 'opensnitch:' >/dev/null; \
+		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue

@@ -21,3 +21,7 @@ user-owned Unix socket (default: `$XDG_RUNTIME_DIR/tachikoma/tachikoma.sock`),
 mode `0600`; OpenSnitch input is opt-in with `--opensnitch-history` and is
 read-only. A denied connection can create a review proposal, never an automatic
 allow rule.
+
+The `tachikoma` terminal client uses that Unix-socket Connect API. For example,
+`tachikoma status`, `tachikoma queue`, and `tachikoma approve <proposal-id>`
+never write the SQLite database directly.

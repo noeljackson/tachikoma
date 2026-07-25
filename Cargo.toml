@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "tachikomad"
 path = "src/main.rs"
 
+[[bin]]
+name = "tachikoma"
+path = "src/cli.rs"
+
 [dependencies]
 anyhow = "1.0.100"
 askama = "0.16.0"
@@ -23,6 +27,9 @@ clap = { version = "4.5.60", features = ["derive"] }
 connectrpc = { version = "0.8.1", features = ["axum", "client", "server"] }
 dirs = "6.0.0"
 getrandom = "0.4.3"
+http = "1.4.0"
+hyper = { version = "1.11.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
@@ -30,6 +37,7 @@ thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1.43"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tower = { version = "0.5.3", features = ["util"] }
 
 [build-dependencies]
 connectrpc-build = "0.8.0"
