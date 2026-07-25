@@ -35,3 +35,7 @@ Automation policies are JSON-scoped durable intent, not generic shell or
 network permission. They must name a non-empty scope; an `automatic` policy is
 limited to low-risk proposals and still cannot execute anything until a future
 adapter-specific executor is explicitly installed and enabled.
+
+Use `tachikoma policy upsert ... --scope '{"context":"development"}'` to
+configure them. The terminal client calls the policy Connect service; it does
+not modify the local state database directly.

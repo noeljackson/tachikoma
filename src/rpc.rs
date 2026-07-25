@@ -46,6 +46,7 @@ fn to_proto(record: ProposalRecord) -> Proposal {
         "awaiting_review" => ProposalState::AwaitingReview,
         "approved" => ProposalState::Approved,
         "rejected" => ProposalState::Rejected,
+        "queued" => ProposalState::Queued,
         "applied" => ProposalState::Applied,
         "failed" => ProposalState::Failed,
         _ => ProposalState::Proposed,
@@ -160,7 +161,7 @@ impl ProposalService for ProposalApi {
                 ));
             }
             let timestamp = now();
-            let record = ProposalRecord {
+            let mut record = ProposalRecord {
                 id: new_proposal_id(),
                 adapter: request.adapter,
                 action: request.action,
@@ -174,11 +175,17 @@ impl ProposalService for ProposalApi {
                 created_at: timestamp.clone(),
                 updated_at: timestamp,
             };
-            self.store
+            let store = self
+                .store
                 .lock()
-                .map_err(|_| internal("proposal store lock poisoned"))?
-                .create(&record)
-                .map_err(internal)?;
+                .map_err(|_| internal("proposal store lock poisoned"))?;
+            if let Some(policy_id) = store
+                .apply_automatic_policy(&mut record)
+                .map_err(internal)?
+            {
+                tracing::info!(proposal_id = %record.id, %policy_id, "queued proposal through scoped automatic policy");
+            }
+            store.create(&record).map_err(internal)?;
             Response::ok(CreateProposalResponse {
                 proposal: Some(to_proto(record)).into(),
                 ..Default::default()

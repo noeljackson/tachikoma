@@ -154,11 +154,13 @@ async fn main() -> Result<()> {
                             ) else {
                                 continue;
                             };
-                            match scanner_store
-                                .lock()
-                                .expect("store lock")
-                                .create_if_absent(&proposal)
-                            {
+                            let mut proposal = proposal;
+                            let store = scanner_store.lock().expect("store lock");
+                            if let Err(error) = store.apply_automatic_policy(&mut proposal) {
+                                tracing::warn!(%error, "could not evaluate OpenSnitch automation policy");
+                                continue;
+                            }
+                            match store.create_if_absent(&proposal) {
                                 Ok(true) => {
                                     tracing::info!(proposal_id = %proposal.id, "created OpenSnitch review proposal")
                                 }

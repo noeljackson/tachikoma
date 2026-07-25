@@ -8,8 +8,9 @@ use http::{Request, header::HOST};
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use tachikoma::proto::tachikoma::v1::{
-    ApproveProposalRequest, CreateProposalRequest, GetStatusRequest, ListProposalsRequest,
-    ProposalServiceClient, RejectProposalRequest, StatusServiceClient,
+    ApproveProposalRequest, AutomationPolicy, AutomationPolicyServiceClient, CreateProposalRequest,
+    GetStatusRequest, ListPoliciesRequest, ListProposalsRequest, ProposalServiceClient,
+    RejectProposalRequest, StatusServiceClient, UpsertPolicyRequest,
 };
 use tachikoma::{
     adapter::ObservationAdapter,
@@ -49,6 +50,30 @@ enum Command {
         namespace: Option<String>,
         #[arg(required = true, trailing_var_arg = true)]
         arguments: Vec<String>,
+    },
+    /// List or configure narrowly-scoped automation policies.
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PolicyCommand {
+    List,
+    Upsert {
+        id: String,
+        #[arg(long)]
+        adapter: String,
+        #[arg(long)]
+        action: String,
+        /// Non-empty JSON object that must exactly match proposal evidence.
+        #[arg(long)]
+        scope: String,
+        #[arg(long, default_value = "review")]
+        mode: String,
+        #[arg(long, default_value = "low")]
+        risk_ceiling: String,
     },
 }
 
@@ -179,6 +204,55 @@ async fn main() -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("server returned no proposal"))?;
             println!("{} queued for review", proposal.id);
         }
+        Command::Policy { command } => match command {
+            PolicyCommand::List => {
+                let response = AutomationPolicyServiceClient::new(transport, config)
+                    .list_policies(ListPoliciesRequest::default())
+                    .await?
+                    .into_owned();
+                for policy in response.policies {
+                    println!(
+                        "{}\t{}\t{}\t{}\t{}\t{}",
+                        policy.id,
+                        policy.adapter,
+                        policy.action,
+                        policy.mode,
+                        policy.risk_ceiling,
+                        policy.scope
+                    );
+                }
+            }
+            PolicyCommand::Upsert {
+                id,
+                adapter,
+                action,
+                scope,
+                mode,
+                risk_ceiling,
+            } => {
+                let response = AutomationPolicyServiceClient::new(transport, config)
+                    .upsert_policy(UpsertPolicyRequest {
+                        policy: Some(AutomationPolicy {
+                            id,
+                            adapter,
+                            action,
+                            scope,
+                            mode,
+                            risk_ceiling,
+                            ..Default::default()
+                        })
+                        .into(),
+                        ..Default::default()
+                    })
+                    .await?
+                    .into_owned();
+                let policy = response
+                    .policy
+                    .into_option()
+                    .ok_or_else(|| anyhow::anyhow!("server returned no policy"))?;
+                println!("{} saved", policy.id);
+            }
+        },
     }
     Ok(())
 }

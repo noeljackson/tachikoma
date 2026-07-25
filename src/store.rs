@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProposalRecord {
@@ -101,6 +102,38 @@ impl Store {
         Ok(changed == 1)
     }
 
+    /// Apply a policy only when it is an exact, low-risk automatic match.
+    /// `queued` is not execution: no executor exists in this crate, so this
+    /// state remains visible and inert until an adapter-specific capability is
+    /// deliberately added in the future.
+    pub fn apply_automatic_policy(&self, proposal: &mut ProposalRecord) -> Result<Option<String>> {
+        if proposal.state != "awaiting_review" || proposal.risk != "low" {
+            return Ok(None);
+        }
+        let evidence = match serde_json::from_str::<Value>(&proposal.evidence_json) {
+            Ok(Value::Object(value)) => Value::Object(value),
+            _ => return Ok(None),
+        };
+        for policy in self.list_policies()? {
+            if policy.mode != "automatic"
+                || policy.risk_ceiling != "low"
+                || policy.adapter != proposal.adapter
+                || policy.action != proposal.action
+            {
+                continue;
+            }
+            let scope = match serde_json::from_str::<Value>(&policy.scope) {
+                Ok(Value::Object(value)) if !value.is_empty() => Value::Object(value),
+                _ => continue,
+            };
+            if scope_matches(&scope, &evidence) {
+                proposal.state = "queued".into();
+                return Ok(Some(policy.id));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn list(&self, state: Option<&str>) -> Result<Vec<ProposalRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT id, adapter, action, state, risk, evidence_json, preview, rollback, idempotency_key, expires_at_unix, created_at, updated_at
@@ -186,6 +219,17 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+}
+
+fn scope_matches(scope: &Value, evidence: &Value) -> bool {
+    match (scope, evidence) {
+        (Value::Object(scope), Value::Object(evidence)) => scope.iter().all(|(key, value)| {
+            evidence
+                .get(key)
+                .is_some_and(|candidate| scope_matches(value, candidate))
+        }),
+        _ => scope == evidence,
     }
 }
 
@@ -276,6 +320,48 @@ mod tests {
                 .expect("duplicate scanner insert")
         );
         assert_eq!(store.count().expect("count"), 1);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn automatic_policy_is_exact_low_risk_and_only_queues() {
+        let (store, path) = test_store();
+        store
+            .upsert_policy(&super::AutomationPolicyRecord {
+                id: "kubectl-dev-read".into(),
+                adapter: "kubernetes".into(),
+                action: "review_kubectl_observation".into(),
+                scope: r#"{"context":"development"}"#.into(),
+                mode: "automatic".into(),
+                risk_ceiling: "low".into(),
+            })
+            .expect("store policy");
+        let mut matching = proposal();
+        matching.adapter = "kubernetes".into();
+        matching.action = "review_kubectl_observation".into();
+        matching.risk = "low".into();
+        matching.evidence_json = r#"{"context":"development","arguments":["get","pods"]}"#.into();
+        assert_eq!(
+            store
+                .apply_automatic_policy(&mut matching)
+                .expect("evaluate policy"),
+            Some("kubectl-dev-read".into())
+        );
+        assert_eq!(matching.state, "queued");
+
+        let mut wrong_context = matching.clone();
+        wrong_context.state = "awaiting_review".into();
+        wrong_context.evidence_json = r#"{"context":"production"}"#.into();
+        assert!(
+            store
+                .apply_automatic_policy(&mut wrong_context)
+                .expect("evaluate policy")
+                .is_none()
+        );
+        assert_eq!(wrong_context.state, "awaiting_review");
         drop(store);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
