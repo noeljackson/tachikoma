@@ -1,0 +1,14 @@
+services:
+  tachikoma:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:17447:7447"
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

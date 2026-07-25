@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tachikoma</title>
+  </head>
+  <body>
+    <main>
+      <h1>Tachikoma</h1>
+      <p>Local policy proposal queue.</p>
+      <p id="proposal-count">{{ proposals.len() }} proposals</p>
+      <ul id="proposal-queue">
+      {% for proposal in proposals %}
+        <li>
+          <p><strong>{{ proposal.adapter }}</strong>: {{ proposal.action }} — {{ proposal.state }} ({{ proposal.risk }})</p>
+          <p>{{ proposal.preview }}</p>
+          {% if proposal.state == "awaiting_review" %}
+          <form method="post" action="/proposals/{{ proposal.id }}/approve">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Approve</button>
+          </form>
+          <form method="post" action="/proposals/{{ proposal.id }}/reject">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Reject</button>
+          </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+      </ul>
+      <p>The dashboard is server-rendered Rust. HTMX may be added as a vendored progressive enhancement; no frontend framework or package manager is required.</p>
+    </main>
+  </body>
+</html>

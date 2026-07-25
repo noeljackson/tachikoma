@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package tachikoma.v1;
+
+service StatusService {
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
+
+service ProposalService {
+  rpc ListProposals(ListProposalsRequest) returns (ListProposalsResponse);
+  rpc CreateProposal(CreateProposalRequest) returns (CreateProposalResponse);
+  rpc ApproveProposal(ApproveProposalRequest) returns (ProposalResponse);
+  rpc RejectProposal(RejectProposalRequest) returns (ProposalResponse);
+}
+
+service AutomationPolicyService {
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  rpc UpsertPolicy(UpsertPolicyRequest) returns (AutomationPolicyResponse);
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  string version = 1;
+  repeated AdapterStatus adapters = 2;
+}
+
+message AdapterStatus {
+  string name = 1;
+  bool enabled = 2;
+  string detail = 3;
+}
+
+enum ProposalState {
+  PROPOSAL_STATE_UNSPECIFIED = 0;
+  PROPOSAL_STATE_OBSERVED = 1;
+  PROPOSAL_STATE_PROPOSED = 2;
+  PROPOSAL_STATE_VALIDATED = 3;
+  PROPOSAL_STATE_AWAITING_REVIEW = 4;
+  PROPOSAL_STATE_APPROVED = 5;
+  PROPOSAL_STATE_REJECTED = 6;
+  PROPOSAL_STATE_EXPIRED = 7;
+  PROPOSAL_STATE_QUEUED = 8;
+  PROPOSAL_STATE_EXECUTING = 9;
+  PROPOSAL_STATE_APPLIED = 10;
+  PROPOSAL_STATE_FAILED = 11;
+}
+
+message Proposal {
+  string id = 1;
+  string adapter = 2;
+  string action = 3;
+  ProposalState state = 4;
+  string risk = 5;
+  string evidence_json = 6;
+  string preview = 7;
+  string rollback = 8;
+  string idempotency_key = 9;
+  int64 expires_at_unix = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message ListProposalsRequest {
+  ProposalState state = 1;
+}
+
+message ListProposalsResponse {
+  repeated Proposal proposals = 1;
+}
+
+message CreateProposalRequest {
+  string adapter = 1;
+  string action = 2;
+  string risk = 3;
+  string evidence_json = 4;
+  string preview = 5;
+  string rollback = 6;
+  string idempotency_key = 7;
+  int64 expires_at_unix = 8;
+}
+
+message CreateProposalResponse { Proposal proposal = 1; }
+message ApproveProposalRequest { string id = 1; }
+message RejectProposalRequest { string id = 1; string reason = 2; }
+message ProposalResponse { Proposal proposal = 1; }
+
+message ListPoliciesRequest {}
+message AutomationPolicy {
+  string id = 1;
+  string adapter = 2;
+  string action = 3;
+  string scope = 4;
+  string mode = 5;
+  string risk_ceiling = 6;
+}
+message ListPoliciesResponse { repeated AutomationPolicy policies = 1; }
+message UpsertPolicyRequest { AutomationPolicy policy = 1; }
+message AutomationPolicyResponse { AutomationPolicy policy = 1; }

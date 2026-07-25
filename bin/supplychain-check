@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+supplychain_src="${SUPPLYCHAIN_SRC:-$HOME/src/noeljackson/supplychain}"
+supplychain_ref="${SUPPLYCHAIN_REF:-dd34170a75a80d9b3484e39df0ac2a5ebf6682dc}"
+project_root="${1:?usage: supplychain-check PROJECT_ROOT}"
+
+test -d "$supplychain_src/.git"
+git -C "$supplychain_src" rev-parse --verify "$supplychain_ref^{commit}" >/dev/null
+
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/tachikoma-supplychain"
+mkdir -p "$cache_root"
+work_dir="$(mktemp -d "$cache_root/run.XXXXXX")"
+trap 'rm -rf "$work_dir"' EXIT
+git -C "$supplychain_src" archive --format=tar "$supplychain_ref" | tar -xf - -C "$work_dir"
+
+(
+  cd "$work_dir"
+  go mod verify
+  go build -trimpath -o "$work_dir/supplychain" .
+)
+"$work_dir/supplychain" ci --policy=strict "$project_root"
