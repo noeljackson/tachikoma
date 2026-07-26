@@ -1,0 +1,15 @@
+[Unit]
+Description=Tachikoma local proposal control plane
+Documentation=https://github.com/noeljackson/tachikoma
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/env tachikomad
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

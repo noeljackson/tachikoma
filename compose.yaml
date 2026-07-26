@@ -8,7 +8,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp:mode=1777
+    volumes:
+      - tachikoma-state:/var/lib/tachikoma
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+volumes:
+  tachikoma-state:

@@ -13,9 +13,11 @@ FROM build AS test
 RUN cargo test --locked
 
 FROM debian:bookworm-slim AS runtime
-RUN groupadd --system tachikoma && useradd --system --gid tachikoma --home-dir /nonexistent --shell /usr/sbin/nologin tachikoma
+RUN groupadd --system tachikoma \
+    && useradd --system --gid tachikoma --home-dir /nonexistent --shell /usr/sbin/nologin tachikoma \
+    && install -d --owner=tachikoma --group=tachikoma --mode=0700 /var/lib/tachikoma
 COPY --from=build /app/target/release/tachikomad /usr/local/bin/tachikomad
 COPY --from=build /app/target/release/tachikoma /usr/local/bin/tachikoma
 USER tachikoma
 EXPOSE 7447
-ENTRYPOINT ["/usr/local/bin/tachikomad", "--database", "/tmp/tachikoma.sqlite3", "--rpc-socket", "/tmp/tachikoma.sock", "--listen", "0.0.0.0:7447"]
+ENTRYPOINT ["/usr/local/bin/tachikomad", "--database", "/var/lib/tachikoma/tachikoma.sqlite3", "--rpc-socket", "/tmp/tachikoma.sock", "--listen", "0.0.0.0:7447"]
