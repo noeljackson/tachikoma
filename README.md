@@ -69,12 +69,17 @@ erase all Compose state, use `docker compose down --volumes`.
 
 ## Native installation
 
-Install both binaries under `~/.local/bin` from a checked-out source tree:
+For a systemd-managed workstation, `make service-enable` performs the initial
+locked release build, installs both binaries under `~/.local/bin`, installs the
+user unit, reloads the user manager, and starts the service:
 
 ```sh
-cargo install --path . --locked --root "$HOME/.local"
-export PATH="$HOME/.local/bin:$PATH"
+make service-enable
 ```
+
+Override `INSTALL_PREFIX` or `SYSTEMD_USER_DIR` when your user layout differs.
+For a non-systemd foreground build, use `make build-release` and run the two
+binaries from `target/release/`.
 
 The daemon defaults to:
 
@@ -113,14 +118,12 @@ tachikoma reject p-example --reason "destination is not expected"
 
 ### systemd user service
 
-Install the maintained unit, then enable it in the user manager:
+The service lifecycle targets are:
 
 ```sh
-install -Dm644 contrib/systemd/tachikoma.service \
-  "$HOME/.config/systemd/user/tachikoma.service"
-systemctl --user daemon-reload
-systemctl --user enable --now tachikoma.service
-systemctl --user status tachikoma.service
+make service-status
+make service-restart
+make service-logs
 ```
 
 The unit uses the XDG defaults above, restarts on failure, runs without new
@@ -130,6 +133,18 @@ umask. View logs with:
 ```sh
 journalctl --user --unit=tachikoma.service --follow
 ```
+
+To update a clean checkout safely, use:
+
+```sh
+make update
+```
+
+It refuses a dirty worktree, fast-forwards from Git, runs the Docker-only
+application gate and systemd validation, reinstalls the locked release
+binaries/unit, then restarts the service only if it is already active. To
+reinstall local source changes without pulling, use `make install` followed by
+`make service-restart`.
 
 ## OpenSnitch example
 
