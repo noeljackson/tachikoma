@@ -9,6 +9,10 @@ repository = "https://github.com/noeljackson/tachikoma"
 [lib]
 name = "tachikoma"
 path = "src/lib.rs"
+# connectrpc's generated server-streaming RPIT trait currently makes rustdoc's
+# merged doctest harness exit without diagnostics. This crate has no doctests;
+# executable examples are covered by unit/integration and CLI smoke tests.
+doctest = false
 
 [[bin]]
 name = "tachikomad"
@@ -21,22 +25,34 @@ path = "src/cli.rs"
 [dependencies]
 anyhow = "1.0.100"
 askama = "0.16.0"
+async-trait = "0.1.89"
 axum = "0.8.8"
 buffa = "0.8.1"
 clap = { version = "4.5.60", features = ["derive"] }
 connectrpc = { version = "0.8.1", features = ["axum", "client", "server"] }
 crossterm = "0.29.0"
 dirs = "6.0.0"
+futures-util = "0.3.33"
 getrandom = "0.4.3"
 http = "1.4.0"
 hyper = { version = "1.11.0", features = ["client", "http1"] }
 hyper-util = { version = "0.1.20", features = ["tokio"] }
+libc = "0.2.178"
+pi-agent = { git = "https://github.com/noeljackson/pi", tag = "v0.2.1" }
+pi-ai = { git = "https://github.com/noeljackson/pi", tag = "v0.2.1", default-features = false, features = ["rustls-tls"] }
+pi-providers = { git = "https://github.com/noeljackson/pi", tag = "v0.2.1", default-features = false, features = ["rustls-tls"] }
+pi-session = { git = "https://github.com/noeljackson/pi", tag = "v0.2.1" }
+pi-tui = { git = "https://github.com/noeljackson/pi", tag = "v0.2.1" }
+regex = "1.12.2"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 ratatui = { version = "0.30.0", default-features = false, features = ["crossterm_0_29"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.10.9"
+tempfile = "3.23.0"
 thiserror = "2.0.18"
-tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1.49.0", features = ["fs", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = "0.1.43"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 tower = { version = "0.5.3", features = ["util"] }

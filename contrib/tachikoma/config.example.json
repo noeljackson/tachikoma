@@ -1,0 +1,59 @@
+{
+  "database": null,
+  "rpc_socket": null,
+  "listen": "127.0.0.1:7447",
+  "opensnitch": {
+    "enabled": true,
+    "history": "/home/replace-me/.local/share/opensnitch/ui.sqlite3",
+    "poll_seconds": 60,
+    "limit": 100
+  },
+  "ai": {
+    "enabled": false,
+    "investigations": true,
+    "max_concurrency": 2,
+    "request_timeout_seconds": 90,
+    "max_tool_calls": 4,
+    "max_tool_output_bytes": 65536,
+    "default_model": "auto",
+    "model_preference": [
+      "openai-codex/gpt-5.4",
+      "anthropic/claude-sonnet-4-6",
+      "zai-coding/glm-5.1",
+      "kimi-coding/kimi-for-coding"
+    ],
+    "disabled_models": [],
+    "sessions_dir": null,
+    "models": [
+      {
+        "provider": "anthropic-compatible",
+        "id": "replace-me",
+        "name": "Custom Anthropic-compatible model",
+        "api": "anthropic",
+        "baseUrl": "https://example.invalid/anthropic",
+        "usageScope": "general",
+        "api_key_env": "CUSTOM_ANTHROPIC_API_KEY"
+      }
+    ],
+    "tools": [
+      {
+        "id": "inspect_process",
+        "description": "Resolve the observed process executable path.",
+        "program": "/usr/bin/readlink",
+        "argv": ["-f", "{{evidence.process}}"],
+        "timeout_seconds": 5
+      }
+    ],
+    "reviews": [
+      {
+        "id": "opensnitch-denial",
+        "adapter": "opensnitch",
+        "action": "review_denied_connection",
+        "provider": "auto",
+        "prompt": "Assess whether this denied connection is expected and prioritize human review.",
+        "tools": ["inspect_process"],
+        "automatic": true
+      }
+    ]
+  }
+}

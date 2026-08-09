@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +28,61 @@ pub struct AutomationPolicyRecord {
     pub scope: String,
     pub mode: String,
     pub risk_ceiling: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisRunRecord {
+    pub id: String,
+    pub proposal_id: String,
+    pub profile_id: String,
+    pub state: String,
+    pub provider: String,
+    pub model: String,
+    pub config_hash: String,
+    pub prompt_hash: String,
+    pub prompt_snapshot: String,
+    pub tool_trace_json: String,
+    pub response_json: String,
+    pub finding: String,
+    pub priority: String,
+    pub confidence: f64,
+    pub rationale: String,
+    pub next_step: String,
+    pub error: String,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisSummaryRecord {
+    pub id: String,
+    pub state: String,
+    pub profile_id: String,
+    pub provider: String,
+    pub model: String,
+    pub finding: String,
+    pub priority: String,
+    pub confidence: f64,
+    pub rationale: String,
+    pub next_step: String,
+    pub error: String,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvestigationRecord {
+    pub id: String,
+    pub proposal_id: String,
+    pub jsonl_path: String,
+    pub active_provider: String,
+    pub active_model: String,
+    pub status: String,
+    pub is_primary: bool,
+    pub latest_remediation_json: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Durable SQLite store. The proposal schema is intentionally transport-neutral.
@@ -71,6 +126,44 @@ impl Store {
               mode TEXT NOT NULL,
               risk_ceiling TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS analysis_runs (
+              id TEXT PRIMARY KEY,
+              proposal_id TEXT NOT NULL,
+              profile_id TEXT NOT NULL,
+              state TEXT NOT NULL,
+              provider TEXT NOT NULL,
+              model TEXT NOT NULL,
+              config_hash TEXT NOT NULL,
+              prompt_hash TEXT NOT NULL,
+              prompt_snapshot TEXT NOT NULL,
+              tool_trace_json TEXT NOT NULL,
+              response_json TEXT NOT NULL,
+              finding TEXT NOT NULL,
+              priority TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              rationale TEXT NOT NULL,
+              next_step TEXT NOT NULL,
+              error TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              started_at TEXT,
+              completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS analysis_runs_proposal_created
+              ON analysis_runs(proposal_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS investigation_sessions (
+              id TEXT PRIMARY KEY,
+              proposal_id TEXT NOT NULL,
+              jsonl_path TEXT NOT NULL UNIQUE,
+              active_provider TEXT NOT NULL,
+              active_model TEXT NOT NULL,
+              status TEXT NOT NULL,
+              is_primary INTEGER NOT NULL DEFAULT 1,
+              latest_remediation_json TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS investigation_primary_proposal
+              ON investigation_sessions(proposal_id) WHERE is_primary = 1;
             ",
         )?;
         Ok(Self { connection })
@@ -80,6 +173,48 @@ impl Store {
         self.connection
             .query_row("SELECT COUNT(*) FROM proposals", [], |row| row.get(0))
             .context("count proposals")
+    }
+
+    pub fn get_proposal(&self, id: &str) -> Result<ProposalRecord> {
+        self.connection
+            .query_row(
+                "SELECT id, adapter, action, state, risk, evidence_json, preview, rollback, idempotency_key, expires_at_unix, created_at, updated_at FROM proposals WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok(ProposalRecord {
+                        id: row.get(0)?,
+                        adapter: row.get(1)?,
+                        action: row.get(2)?,
+                        state: row.get(3)?,
+                        risk: row.get(4)?,
+                        evidence_json: row.get(5)?,
+                        preview: row.get(6)?,
+                        rollback: row.get(7)?,
+                        idempotency_key: row.get(8)?,
+                        expires_at_unix: row.get(9)?,
+                        created_at: row.get(10)?,
+                        updated_at: row.get(11)?,
+                    })
+                },
+            )
+            .context("load proposal")
+    }
+
+    pub fn get_proposal_by_idempotency_key(&self, key: &str) -> Result<ProposalRecord> {
+        self.connection
+            .query_row(
+                "SELECT id, adapter, action, state, risk, evidence_json, preview, rollback, idempotency_key, expires_at_unix, created_at, updated_at FROM proposals WHERE idempotency_key = ?1",
+                [key],
+                |row| {
+                    Ok(ProposalRecord {
+                        id: row.get(0)?, adapter: row.get(1)?, action: row.get(2)?,
+                        state: row.get(3)?, risk: row.get(4)?, evidence_json: row.get(5)?,
+                        preview: row.get(6)?, rollback: row.get(7)?, idempotency_key: row.get(8)?,
+                        expires_at_unix: row.get(9)?, created_at: row.get(10)?, updated_at: row.get(11)?,
+                    })
+                },
+            )
+            .context("load proposal by idempotency key")
     }
 
     pub fn create(&self, proposal: &ProposalRecord) -> Result<()> {
@@ -161,6 +296,167 @@ impl Store {
         Ok(records)
     }
 
+    pub fn create_analysis(&self, run: &AnalysisRunRecord) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO analysis_runs (id, proposal_id, profile_id, state, provider, model, config_hash, prompt_hash, prompt_snapshot, tool_trace_json, response_json, finding, priority, confidence, rationale, next_step, error, created_at, started_at, completed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            rusqlite::params![
+                run.id, run.proposal_id, run.profile_id, run.state, run.provider, run.model,
+                run.config_hash, run.prompt_hash, run.prompt_snapshot, run.tool_trace_json,
+                run.response_json, run.finding, run.priority, run.confidence, run.rationale,
+                run.next_step, run.error, run.created_at, run.started_at, run.completed_at,
+            ],
+        )
+        .context("create analysis run")?;
+        Ok(())
+    }
+
+    pub fn update_analysis(&self, run: &AnalysisRunRecord) -> Result<()> {
+        self.connection.execute(
+            "UPDATE analysis_runs SET state = ?1, provider = ?2, model = ?3, config_hash = ?4, prompt_hash = ?5, prompt_snapshot = ?6, tool_trace_json = ?7, response_json = ?8, finding = ?9, priority = ?10, confidence = ?11, rationale = ?12, next_step = ?13, error = ?14, started_at = ?15, completed_at = ?16 WHERE id = ?17",
+            rusqlite::params![
+                run.state, run.provider, run.model, run.config_hash, run.prompt_hash,
+                run.prompt_snapshot, run.tool_trace_json, run.response_json, run.finding,
+                run.priority, run.confidence, run.rationale, run.next_step, run.error,
+                run.started_at, run.completed_at, run.id,
+            ],
+        )
+        .context("update analysis run")?;
+        Ok(())
+    }
+
+    pub fn get_analysis(&self, id: &str) -> Result<AnalysisRunRecord> {
+        self.connection
+            .query_row(
+                "SELECT id, proposal_id, profile_id, state, provider, model, config_hash, prompt_hash, prompt_snapshot, tool_trace_json, response_json, finding, priority, confidence, rationale, next_step, error, created_at, started_at, completed_at FROM analysis_runs WHERE id = ?1",
+                [id],
+                analysis_from_row,
+            )
+            .context("load analysis run")
+    }
+
+    pub fn list_analyses(&self, proposal_id: Option<&str>) -> Result<Vec<AnalysisRunRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, proposal_id, profile_id, state, provider, model, config_hash, prompt_hash, prompt_snapshot, tool_trace_json, response_json, finding, priority, confidence, rationale, next_step, error, created_at, started_at, completed_at FROM analysis_runs WHERE (?1 IS NULL OR proposal_id = ?1) ORDER BY created_at DESC",
+        )?;
+        let rows = statement.query_map([proposal_id], analysis_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn latest_analysis(&self, proposal_id: &str) -> Result<Option<AnalysisSummaryRecord>> {
+        self.connection
+            .query_row(
+                "SELECT id, state, profile_id, provider, model, finding, priority, confidence, rationale, next_step, error, created_at, completed_at FROM analysis_runs WHERE proposal_id = ?1 ORDER BY created_at DESC LIMIT 1",
+                [proposal_id],
+                |row| {
+                    Ok(AnalysisSummaryRecord {
+                        id: row.get(0)?, state: row.get(1)?, profile_id: row.get(2)?,
+                        provider: row.get(3)?, model: row.get(4)?, finding: row.get(5)?,
+                        priority: row.get(6)?, confidence: row.get(7)?, rationale: row.get(8)?,
+                        next_step: row.get(9)?, error: row.get(10)?, created_at: row.get(11)?,
+                        completed_at: row.get(12)?,
+                    })
+                },
+            )
+            .optional()
+            .context("load latest analysis")
+    }
+
+    pub fn recover_running_analyses(&self, completed_at: &str) -> Result<()> {
+        self.connection.execute(
+            "UPDATE analysis_runs SET state = 'failed', error = 'daemon restarted while analysis was running', completed_at = ?1 WHERE state IN ('queued', 'running')",
+            [completed_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn create_investigation(&self, record: &InvestigationRecord) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO investigation_sessions (id, proposal_id, jsonl_path, active_provider, active_model, status, is_primary, latest_remediation_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                record.id,
+                record.proposal_id,
+                record.jsonl_path,
+                record.active_provider,
+                record.active_model,
+                record.status,
+                record.is_primary,
+                record.latest_remediation_json,
+                record.created_at,
+                record.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_investigation(&self, id: &str) -> Result<InvestigationRecord> {
+        self.connection
+            .query_row(
+                "SELECT id, proposal_id, jsonl_path, active_provider, active_model, status, is_primary, latest_remediation_json, created_at, updated_at FROM investigation_sessions WHERE id = ?1",
+                [id],
+                investigation_from_row,
+            )
+            .context("load investigation")
+    }
+
+    pub fn list_investigations(&self) -> Result<Vec<InvestigationRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, proposal_id, jsonl_path, active_provider, active_model, status, is_primary, latest_remediation_json, created_at, updated_at FROM investigation_sessions ORDER BY updated_at DESC",
+        )?;
+        let rows = statement.query_map([], investigation_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn primary_investigation(&self, proposal_id: &str) -> Result<Option<InvestigationRecord>> {
+        self.connection
+            .query_row(
+                "SELECT id, proposal_id, jsonl_path, active_provider, active_model, status, is_primary, latest_remediation_json, created_at, updated_at FROM investigation_sessions WHERE proposal_id = ?1 AND is_primary = 1",
+                [proposal_id],
+                investigation_from_row,
+            )
+            .optional()
+            .context("load primary investigation")
+    }
+
+    pub fn set_investigation_model(
+        &self,
+        id: &str,
+        provider: &str,
+        model: &str,
+        updated_at: &str,
+    ) -> Result<()> {
+        let changed = self.connection.execute(
+            "UPDATE investigation_sessions SET active_provider = ?1, active_model = ?2, updated_at = ?3 WHERE id = ?4 AND status != 'running'",
+            rusqlite::params![provider, model, updated_at, id],
+        )?;
+        if changed != 1 {
+            anyhow::bail!("investigation is missing or currently running");
+        }
+        Ok(())
+    }
+
+    pub fn set_investigation_status(&self, id: &str, status: &str, updated_at: &str) -> Result<()> {
+        self.connection.execute(
+            "UPDATE investigation_sessions SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![status, updated_at, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_remediation_draft(
+        &self,
+        id: &str,
+        draft_json: &str,
+        updated_at: &str,
+    ) -> Result<()> {
+        self.connection.execute(
+            "UPDATE investigation_sessions SET latest_remediation_json = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![draft_json, updated_at, id],
+        )?;
+        Ok(())
+    }
+
     pub fn transition(&self, id: &str, state: &str, updated_at: &str) -> Result<ProposalRecord> {
         if !matches!(state, "approved" | "rejected") {
             anyhow::bail!("invalid review state: {state}");
@@ -233,9 +529,49 @@ fn scope_matches(scope: &Value, evidence: &Value) -> bool {
     }
 }
 
+fn analysis_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnalysisRunRecord> {
+    Ok(AnalysisRunRecord {
+        id: row.get(0)?,
+        proposal_id: row.get(1)?,
+        profile_id: row.get(2)?,
+        state: row.get(3)?,
+        provider: row.get(4)?,
+        model: row.get(5)?,
+        config_hash: row.get(6)?,
+        prompt_hash: row.get(7)?,
+        prompt_snapshot: row.get(8)?,
+        tool_trace_json: row.get(9)?,
+        response_json: row.get(10)?,
+        finding: row.get(11)?,
+        priority: row.get(12)?,
+        confidence: row.get(13)?,
+        rationale: row.get(14)?,
+        next_step: row.get(15)?,
+        error: row.get(16)?,
+        created_at: row.get(17)?,
+        started_at: row.get(18)?,
+        completed_at: row.get(19)?,
+    })
+}
+
+fn investigation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<InvestigationRecord> {
+    Ok(InvestigationRecord {
+        id: row.get(0)?,
+        proposal_id: row.get(1)?,
+        jsonl_path: row.get(2)?,
+        active_provider: row.get(3)?,
+        active_model: row.get(4)?,
+        status: row.get(5)?,
+        is_primary: row.get(6)?,
+        latest_remediation_json: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ProposalRecord, Store};
+    use super::{AnalysisRunRecord, ProposalRecord, Store};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_store() -> (Store, std::path::PathBuf) {
@@ -262,6 +598,31 @@ mod tests {
             expires_at_unix: 0,
             created_at: "1".into(),
             updated_at: "1".into(),
+        }
+    }
+
+    fn analysis_run(id: &str, state: &str) -> AnalysisRunRecord {
+        AnalysisRunRecord {
+            id: id.into(),
+            proposal_id: "proposal-1".into(),
+            profile_id: "review-1".into(),
+            state: state.into(),
+            provider: "codex".into(),
+            model: "default".into(),
+            config_hash: "config-hash".into(),
+            prompt_hash: "prompt-hash".into(),
+            prompt_snapshot: "review this".into(),
+            tool_trace_json: "[]".into(),
+            response_json: "{}".into(),
+            finding: "unknown".into(),
+            priority: "normal".into(),
+            confidence: 0.5,
+            rationale: "needs a human".into(),
+            next_step: "human_review".into(),
+            error: String::new(),
+            created_at: id.into(),
+            started_at: None,
+            completed_at: None,
         }
     }
 
@@ -362,6 +723,38 @@ mod tests {
                 .is_none()
         );
         assert_eq!(wrong_context.state, "awaiting_review");
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn analysis_runs_are_durable_and_recoverable() {
+        let (store, path) = test_store();
+        store.create(&proposal()).expect("create proposal");
+        let mut run = analysis_run("1", "queued");
+        store.create_analysis(&run).expect("create analysis");
+        assert_eq!(store.get_analysis("1").expect("load analysis"), run);
+        assert_eq!(
+            store
+                .latest_analysis("proposal-1")
+                .expect("latest")
+                .expect("summary")
+                .state,
+            "queued"
+        );
+
+        run.state = "running".into();
+        run.started_at = Some("2".into());
+        store.update_analysis(&run).expect("update analysis");
+        store
+            .recover_running_analyses("3")
+            .expect("recover analyses");
+        let recovered = store.get_analysis("1").expect("load recovered analysis");
+        assert_eq!(recovered.state, "failed");
+        assert_eq!(recovered.completed_at.as_deref(), Some("3"));
+        assert!(recovered.error.contains("daemon restarted"));
         drop(store);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));

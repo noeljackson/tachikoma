@@ -63,8 +63,10 @@ docker compose exec --no-TTY tachikoma \
   tachikoma --rpc-socket /tmp/tachikoma.sock tui
 ```
 
-The terminal UI is a queue snapshot; press `q` or Escape to close it. Stop the
-service without deleting state with `docker compose down`. To deliberately
+The terminal UI opens proposals as durable AI chats. Use `Enter` to investigate,
+`m` to switch model, `p` to return to proposals, `t` to toggle tool details,
+and `r` to queue a remediation draft for human review. Press `q` to close it.
+Stop the service without deleting state with `docker compose down`. To deliberately
 erase all Compose state, use `docker compose down --volumes`.
 
 ## Native installation
@@ -91,6 +93,57 @@ The daemon defaults to:
 
 When an XDG variable is unavailable, Tachikoma falls back to
 `~/.local/state/tachikoma` for durable state.
+
+### JSON configuration
+
+The daemon reads an optional JSON configuration file from
+`$XDG_CONFIG_HOME/tachikoma/config.json` (normally
+`~/.config/tachikoma/config.json`). A complete example is in
+[`contrib/tachikoma/config.example.json`](contrib/tachikoma/config.example.json).
+Copy it to the config directory and replace the OpenSnitch path as needed:
+
+```sh
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/tachikoma"
+cp contrib/tachikoma/config.example.json \
+  "${XDG_CONFIG_HOME:-$HOME/.config}/tachikoma/config.json"
+```
+
+The top-level `database`, `rpc_socket`, and `listen` values configure the
+durable store, local API socket, and web UI. They are resolved at startup.
+Changes to those values are reported in the daemon log and require a service
+restart. The `opensnitch` section supports `enabled`, a read-only `history` database
+path, `poll_seconds`, and the maximum `limit` of recent rows read per scan.
+
+The optional `ai` section defines a default model, ordered `model_preference`,
+custom compatible endpoints, named read-only tools, and prompt-driven review
+profiles. Tachikoma ships a compiled catalog for OpenAI, Codex login, Anthropic
+and Claude login, GLM/Z.AI (general, coding-plan, and Anthropic-compatible), and
+Kimi (general OpenAI-compatible and coding-plan OpenAI/Anthropic-compatible).
+Run `tachikoma models` to see which entries are authenticated.
+
+`default_model: "auto"` selects the first authenticated model in
+`model_preference`. A qualified reference such as
+`zai-coding/glm-5.1` or `kimi-coding/kimi-for-coding` disables fallback.
+Custom entries in `models` include `provider`, `id`, `name`, `api`, `baseUrl`,
+and optional `api_key_env`; this is also how to add an arbitrary
+Anthropic-compatible endpoint. API keys remain in the daemon environment and
+are never stored in JSONL or SQLite.
+
+The legacy `providers`, `provider_preference`, and unqualified review-provider
+aliases still load, but the daemon logs a migration warning. Tachikoma does not
+read Pi settings, model caches, or Pi auth files.
+
+The daemon checks the JSON file approximately once per second. OpenSnitch and
+AI settings are applied without a restart, including provider preferences,
+review prompts, and concurrency limits. Changes to the database, RPC socket,
+or listen address still require a restart. If a reload contains invalid JSON,
+the previous valid settings are kept. Command-line flags take precedence over
+corresponding JSON values.
+
+OpenSnitch remains a deterministic, read-only history adapter. When AI is
+enabled, a matching review profile can ask a model to select only its named
+tools, inspect their bounded outputs, and return an advisory finding. The
+model cannot invent shell commands or approve/reject the proposal.
 
 ### Foreground Linux operation
 
@@ -148,36 +201,88 @@ reinstall local source changes without pulling, use `make install` followed by
 
 ## OpenSnitch example
 
-OpenSnitch is opt-in. On the common Linux desktop setup, its UI history is at
-`$HOME/.local/share/opensnitch/ui.sqlite3`; pass a different path when your
-installation stores it elsewhere.
+OpenSnitch is opt-in. Configure it in `config.json`; on the common Linux
+desktop setup, its UI history is at
+`$HOME/.local/share/opensnitch/ui.sqlite3`:
 
-Foreground:
-
-```sh
-tachikomad \
-  --opensnitch-history "$HOME/.local/share/opensnitch/ui.sqlite3" \
-  --poll-seconds 60
+```json
+{
+  "opensnitch": {
+    "enabled": true,
+    "history": "/home/your-user/.local/share/opensnitch/ui.sqlite3",
+    "poll_seconds": 60,
+    "limit": 100
+  }
+}
 ```
 
-For the systemd user service, create a drop-in with
-`systemctl --user edit tachikoma.service`, then enter:
-
-```ini
-[Service]
-ExecStart=
-ExecStart=/usr/bin/env tachikomad --opensnitch-history %h/.local/share/opensnitch/ui.sqlite3 --poll-seconds 60
-```
-
-Reload and restart the service:
+The equivalent one-off foreground invocation remains available:
 
 ```sh
-systemctl --user daemon-reload
-systemctl --user restart tachikoma.service
+tachikomad --opensnitch-history "$HOME/.local/share/opensnitch/ui.sqlite3"
 ```
 
 Only denied connections create proposals. Their preview explicitly records
 that no OpenSnitch rule has been changed.
+
+## AI-assisted investigations
+
+After enabling AI, automatic matching reviews run in the background.
+Investigations are advisory and durable:
+
+```sh
+tachikoma queue
+tachikoma analysis <proposal-id>
+```
+
+With `provider: "auto"`, Tachikoma reads the existing Codex token from
+`~/.codex/auth.json` or the Claude Code token from
+`~/.claude/.credentials.json`, then talks to the provider API directly. It does
+not spawn either CLI. API keys are also supported, for example:
+
+```sh
+export OPENAI_API_KEY='...'
+export ANTHROPIC_API_KEY='...'
+```
+
+Those variables must be present in the daemon's environment, not only in the
+interactive shell that invokes the CLI. The installed systemd user service
+optionally reads `%h/.config/tachikoma/ai.env`; create that file with mode
+`0600` when using API keys there.
+
+Run or repeat the automatic structured review through the local Unix-socket API:
+
+```sh
+tachikoma analyze <proposal-id>
+tachikoma analyze <proposal-id> --force
+```
+
+Automatic analysis uses the configured prompt plus proposal evidence and must
+finish through a typed `submit_review` tool containing `finding`, `priority`,
+`confidence`, `rationale`, and `next_step`. The same result seeds the proposal's
+primary chat investigation:
+
+```sh
+tachikoma investigate <proposal-id>
+tachikoma chat <investigation-id> "What evidence would distinguish noise from compromise?"
+tachikoma model <investigation-id> anthropic/claude-sonnet-4-6
+```
+
+Every turn, message, tool call/result, model change, usage report, prompt hash,
+compaction, failure, and cancellation is appended to a versioned JSONL journal
+under `$XDG_STATE_HOME/tachikoma/investigations`. SQLite indexes the journal and
+its proposal relationship; JSONL is the canonical transcript. Model switching
+is allowed only while idle and compacts automatically before switching to a
+smaller context window.
+
+The analysis and chat runners execute configured absolute programs directly under the
+Tachikoma service user. It does not invoke a shell, inherit the environment,
+or allow model-supplied command arguments. Tool output is bounded, redacted,
+and stored for local auditability. The internal `draft_remediation` tool only
+saves JSON; `tachikoma remediate <investigation-id>` turns that draft into a
+linked proposal, never an executed command. If the provider is unavailable or
+returns invalid JSON, the proposal remains in its prior state and the analysis
+run is marked failed.
 
 ## Kubernetes command observations
 
@@ -227,6 +332,10 @@ socket rather than a TCP API port. The stable request/response contract lives
 in [`proto/tachikoma/v1/tachikoma.proto`](proto/tachikoma/v1/tachikoma.proto).
 Use the CLI for local operation; external clients should use that protobuf
 contract and a Unix-socket transport.
+
+`InvestigationService` exposes model discovery, open/get/send, idle model
+switching, cancellation, remediation queueing, and `WatchInvestigation`, a
+server stream that replays persisted events and then follows live events.
 
 ## Verification
 
