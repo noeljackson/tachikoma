@@ -7,6 +7,7 @@ COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto ./proto
 COPY src ./src
 COPY templates ./templates
+COPY contrib/tachikoma/config.example.json ./contrib/tachikoma/config.example.json
 RUN cargo build --release --locked
 
 FROM build AS test

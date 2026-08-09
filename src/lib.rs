@@ -1,6 +1,10 @@
 //! Tachikoma's durable domain model and generated Connect RPC contract.
 
 pub mod adapter;
+pub mod ai;
+pub mod analysis;
+pub mod config;
+pub mod investigation;
 pub mod kubernetes;
 pub mod opensnitch;
 pub mod rpc;

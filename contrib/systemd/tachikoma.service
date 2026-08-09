@@ -4,7 +4,8 @@ Documentation=https://github.com/noeljackson/tachikoma
 
 [Service]
 Type=simple
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+Environment=PATH=%h/.npm-global/bin:%h/.local/bin:/usr/local/bin:/usr/bin
+EnvironmentFile=-%h/.config/tachikoma/ai.env
 ExecStart=/usr/bin/env tachikomad
 Restart=on-failure
 RestartSec=5s

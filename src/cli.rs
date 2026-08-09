@@ -8,9 +8,12 @@ use http::{Request, header::HOST};
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use tachikoma::proto::tachikoma::v1::{
-    ApproveProposalRequest, AutomationPolicy, AutomationPolicyServiceClient, CreateProposalRequest,
-    GetStatusRequest, ListPoliciesRequest, ListProposalsRequest, ProposalServiceClient,
-    RejectProposalRequest, StatusServiceClient, UpsertPolicyRequest,
+    AnalysisServiceClient, AnalyzeProposalRequest, ApproveProposalRequest, AutomationPolicy,
+    AutomationPolicyServiceClient, CancelTurnRequest, CreateProposalRequest,
+    GetInvestigationRequest, GetStatusRequest, InvestigationServiceClient, ListAnalysesRequest,
+    ListModelsRequest, ListPoliciesRequest, ListProposalsRequest, OpenInvestigationRequest,
+    ProposalServiceClient, QueueRemediationDraftRequest, RejectProposalRequest, SendMessageRequest,
+    SetActiveModelRequest, StatusServiceClient, UpsertPolicyRequest,
 };
 use tachikoma::{
     adapter::ObservationAdapter,
@@ -36,6 +39,32 @@ enum Command {
     Queue,
     /// Open a local terminal UI snapshot of the queue; q or Escape closes it.
     Tui,
+    /// List compiled and custom models with local authentication status.
+    Models,
+    /// Open or resume the primary chat investigation for a proposal.
+    Investigate {
+        id: String,
+        #[arg(long)]
+        model: Option<String>,
+    },
+    /// Send one message to a durable investigation.
+    Chat { id: String, message: String },
+    /// Switch an idle investigation to another qualified model.
+    Model { id: String, model: String },
+    /// Cancel the active turn in an investigation.
+    Cancel { id: String },
+    /// Queue the latest remediation draft as a linked proposal.
+    Remediate { id: String },
+    /// Start an AI investigation for one proposal.
+    Analyze {
+        id: String,
+        #[arg(long)]
+        profile: Option<String>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// List durable AI investigations for one proposal.
+    Analysis { id: String },
     /// Approve one reviewable proposal.
     Approve { id: String },
     /// Reject one reviewable proposal.
@@ -90,6 +119,24 @@ fn io_error(error: impl std::fmt::Display) -> io::Error {
     io::Error::other(error.to_string())
 }
 
+fn print_latest_assistant(investigation: &tachikoma::proto::tachikoma::v1::Investigation) {
+    let content = investigation.events.iter().rev().find_map(|event| {
+        let value: serde_json::Value = serde_json::from_str(&event.json).ok()?;
+        (event.kind == "message" && value["message"]["role"].as_str() == Some("assistant")).then(
+            || {
+                value["message"]["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string()
+            },
+        )
+    });
+    println!(
+        "{}",
+        content.unwrap_or_else(|| "(no assistant response)".into())
+    );
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -114,12 +161,12 @@ async fn main() -> Result<()> {
             }
         },
     );
-    let transport = ServiceTransport::new(connector);
+    let transport = || ServiceTransport::new(connector.clone());
     let config = ClientConfig::new("http://tachikoma.local".parse()?);
 
     match args.command {
         Command::Status => {
-            let response = StatusServiceClient::new(transport, config)
+            let response = StatusServiceClient::new(transport(), config.clone())
                 .get_status(GetStatusRequest::default())
                 .await?
                 .into_owned();
@@ -138,7 +185,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Queue => {
-            let response = ProposalServiceClient::new(transport, config)
+            let response = ProposalServiceClient::new(transport(), config.clone())
                 .list_proposals(ListProposalsRequest::default())
                 .await?
                 .into_owned();
@@ -150,28 +197,256 @@ async fn main() -> Result<()> {
             }
         }
         Command::Tui => {
-            let response = ProposalServiceClient::new(transport, config)
+            let response = ProposalServiceClient::new(transport(), config.clone())
                 .list_proposals(ListProposalsRequest::default())
                 .await?
                 .into_owned();
-            let lines = response
-                .proposals
-                .into_iter()
-                .map(|proposal| {
-                    format!(
-                        "{}  {:?}  {}/{}  {}",
-                        proposal.id,
-                        proposal.state,
-                        proposal.adapter,
-                        proposal.action,
-                        proposal.risk
-                    )
+            let models = InvestigationServiceClient::new(transport(), config.clone())
+                .list_models(ListModelsRequest::default())
+                .await?
+                .into_owned()
+                .models;
+            let mut app = tachikoma::tui::App::new(response.proposals, models);
+            loop {
+                match tachikoma::tui::run(&mut app)? {
+                    tachikoma::tui::Action::Quit => break,
+                    tachikoma::tui::Action::OpenProposal(proposal_id) => {
+                        let response = InvestigationServiceClient::new(transport(), config.clone())
+                            .open_investigation(OpenInvestigationRequest {
+                                proposal_id,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned();
+                        app.set_investigation(
+                            response.investigation.into_option().ok_or_else(|| {
+                                anyhow::anyhow!("server returned no investigation")
+                            })?,
+                        );
+                    }
+                    tachikoma::tui::Action::SendMessage {
+                        investigation_id,
+                        message,
+                    } => {
+                        let response = InvestigationServiceClient::new(transport(), config.clone())
+                            .send_message(SendMessageRequest {
+                                investigation_id,
+                                message,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned();
+                        app.set_investigation(
+                            response.investigation.into_option().ok_or_else(|| {
+                                anyhow::anyhow!("server returned no investigation")
+                            })?,
+                        );
+                    }
+                    tachikoma::tui::Action::SetModel {
+                        investigation_id,
+                        model,
+                    } => {
+                        let response = InvestigationServiceClient::new(transport(), config.clone())
+                            .set_active_model(SetActiveModelRequest {
+                                investigation_id,
+                                model,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned();
+                        app.set_investigation(
+                            response.investigation.into_option().ok_or_else(|| {
+                                anyhow::anyhow!("server returned no investigation")
+                            })?,
+                        );
+                    }
+                    tachikoma::tui::Action::CancelTurn(investigation_id) => {
+                        let response = InvestigationServiceClient::new(transport(), config.clone())
+                            .cancel_turn(CancelTurnRequest {
+                                investigation_id,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned();
+                        app.set_investigation(
+                            response.investigation.into_option().ok_or_else(|| {
+                                anyhow::anyhow!("server returned no investigation")
+                            })?,
+                        );
+                    }
+                    tachikoma::tui::Action::QueueRemediation(investigation_id) => {
+                        let proposal = InvestigationServiceClient::new(transport(), config.clone())
+                            .queue_remediation_draft(QueueRemediationDraftRequest {
+                                investigation_id,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned()
+                            .proposal
+                            .into_option()
+                            .ok_or_else(|| anyhow::anyhow!("server returned no proposal"))?;
+                        app.proposals.insert(0, proposal);
+                    }
+                    tachikoma::tui::Action::Refresh(investigation_id) => {
+                        let response = InvestigationServiceClient::new(transport(), config.clone())
+                            .get_investigation(GetInvestigationRequest {
+                                investigation_id,
+                                ..Default::default()
+                            })
+                            .await?
+                            .into_owned();
+                        app.set_investigation(
+                            response.investigation.into_option().ok_or_else(|| {
+                                anyhow::anyhow!("server returned no investigation")
+                            })?,
+                        );
+                    }
+                }
+            }
+        }
+        Command::Models => {
+            let response = InvestigationServiceClient::new(transport(), config.clone())
+                .list_models(ListModelsRequest::default())
+                .await?
+                .into_owned();
+            for model in response.models {
+                println!(
+                    "{}/{}\t{}\t{}\t{}",
+                    model.provider,
+                    model.id,
+                    if model.authenticated {
+                        "ready"
+                    } else {
+                        "no-auth"
+                    },
+                    model.credential_source,
+                    model.usage_scope
+                );
+            }
+        }
+        Command::Investigate { id, model } => {
+            let investigation = InvestigationServiceClient::new(transport(), config.clone())
+                .open_investigation(OpenInvestigationRequest {
+                    proposal_id: id,
+                    model: model.unwrap_or_default(),
+                    ..Default::default()
                 })
-                .collect::<Vec<_>>();
-            tachikoma::tui::run(&lines)?;
+                .await?
+                .into_owned()
+                .investigation
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no investigation"))?;
+            println!(
+                "{}\t{}/{}\t{}",
+                investigation.id,
+                investigation.active_provider,
+                investigation.active_model,
+                investigation.status
+            );
+        }
+        Command::Chat { id, message } => {
+            let mut investigation = InvestigationServiceClient::new(transport(), config.clone())
+                .send_message(SendMessageRequest {
+                    investigation_id: id.clone(),
+                    message,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned()
+                .investigation
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no investigation"))?;
+            while investigation.status == "running" {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                investigation = InvestigationServiceClient::new(transport(), config.clone())
+                    .get_investigation(GetInvestigationRequest {
+                        investigation_id: id.clone(),
+                        ..Default::default()
+                    })
+                    .await?
+                    .into_owned()
+                    .investigation
+                    .into_option()
+                    .ok_or_else(|| anyhow::anyhow!("server returned no investigation"))?;
+            }
+            print_latest_assistant(&investigation);
+        }
+        Command::Model { id, model } => {
+            let investigation = InvestigationServiceClient::new(transport(), config.clone())
+                .set_active_model(SetActiveModelRequest {
+                    investigation_id: id,
+                    model,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned()
+                .investigation
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no investigation"))?;
+            println!(
+                "{}/{}",
+                investigation.active_provider, investigation.active_model
+            );
+        }
+        Command::Cancel { id } => {
+            let investigation = InvestigationServiceClient::new(transport(), config.clone())
+                .cancel_turn(CancelTurnRequest {
+                    investigation_id: id,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned()
+                .investigation
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no investigation"))?;
+            println!("{} {}", investigation.id, investigation.status);
+        }
+        Command::Remediate { id } => {
+            let proposal = InvestigationServiceClient::new(transport(), config.clone())
+                .queue_remediation_draft(QueueRemediationDraftRequest {
+                    investigation_id: id,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned()
+                .proposal
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no proposal"))?;
+            println!("{} queued for review", proposal.id);
+        }
+        Command::Analyze { id, profile, force } => {
+            let response = AnalysisServiceClient::new(transport(), config.clone())
+                .analyze_proposal(AnalyzeProposalRequest {
+                    proposal_id: id,
+                    profile_id: profile.unwrap_or_default(),
+                    force,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned();
+            let run = response
+                .run
+                .into_option()
+                .ok_or_else(|| anyhow::anyhow!("server returned no analysis run"))?;
+            println!("{} {}", run.id, run.state);
+        }
+        Command::Analysis { id } => {
+            let response = AnalysisServiceClient::new(transport(), config.clone())
+                .list_analyses(ListAnalysesRequest {
+                    proposal_id: id,
+                    ..Default::default()
+                })
+                .await?
+                .into_owned();
+            for run in response.runs {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    run.id, run.state, run.provider, run.finding, run.priority, run.rationale
+                );
+            }
         }
         Command::Approve { id } => {
-            let proposal = ProposalServiceClient::new(transport, config)
+            let proposal = ProposalServiceClient::new(transport(), config.clone())
                 .approve_proposal(ApproveProposalRequest {
                     id,
                     ..Default::default()
@@ -184,7 +459,7 @@ async fn main() -> Result<()> {
             println!("{} approved", proposal.id);
         }
         Command::Reject { id, reason } => {
-            let proposal = ProposalServiceClient::new(transport, config)
+            let proposal = ProposalServiceClient::new(transport(), config.clone())
                 .reject_proposal(RejectProposalRequest {
                     id,
                     reason,
@@ -209,7 +484,7 @@ async fn main() -> Result<()> {
                     namespace,
                 })
                 .expect("required command arguments produce a draft");
-            let proposal = ProposalServiceClient::new(transport, config)
+            let proposal = ProposalServiceClient::new(transport(), config.clone())
                 .create_proposal(CreateProposalRequest {
                     adapter: draft.adapter,
                     action: draft.action,
@@ -229,7 +504,7 @@ async fn main() -> Result<()> {
         }
         Command::Policy { command } => match command {
             PolicyCommand::List => {
-                let response = AutomationPolicyServiceClient::new(transport, config)
+                let response = AutomationPolicyServiceClient::new(transport(), config.clone())
                     .list_policies(ListPoliciesRequest::default())
                     .await?
                     .into_owned();
@@ -253,7 +528,7 @@ async fn main() -> Result<()> {
                 mode,
                 risk_ceiling,
             } => {
-                let response = AutomationPolicyServiceClient::new(transport, config)
+                let response = AutomationPolicyServiceClient::new(transport(), config.clone())
                     .upsert_policy(UpsertPolicyRequest {
                         policy: Some(AutomationPolicy {
                             id,

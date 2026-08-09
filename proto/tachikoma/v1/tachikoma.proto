@@ -18,6 +18,22 @@ service AutomationPolicyService {
   rpc UpsertPolicy(UpsertPolicyRequest) returns (AutomationPolicyResponse);
 }
 
+service AnalysisService {
+  rpc AnalyzeProposal(AnalyzeProposalRequest) returns (AnalyzeProposalResponse);
+  rpc ListAnalyses(ListAnalysesRequest) returns (ListAnalysesResponse);
+}
+
+service InvestigationService {
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  rpc OpenInvestigation(OpenInvestigationRequest) returns (InvestigationResponse);
+  rpc GetInvestigation(GetInvestigationRequest) returns (InvestigationResponse);
+  rpc SendMessage(SendMessageRequest) returns (InvestigationResponse);
+  rpc WatchInvestigation(WatchInvestigationRequest) returns (stream InvestigationEvent);
+  rpc SetActiveModel(SetActiveModelRequest) returns (InvestigationResponse);
+  rpc CancelTurn(CancelTurnRequest) returns (InvestigationResponse);
+  rpc QueueRemediationDraft(QueueRemediationDraftRequest) returns (ProposalResponse);
+}
+
 message GetStatusRequest {}
 
 message GetStatusResponse {
@@ -59,6 +75,23 @@ message Proposal {
   int64 expires_at_unix = 10;
   string created_at = 11;
   string updated_at = 12;
+  AnalysisSummary latest_analysis = 13;
+}
+
+message AnalysisSummary {
+  string id = 1;
+  string state = 2;
+  string profile_id = 3;
+  string provider = 4;
+  string model = 5;
+  string finding = 6;
+  string priority = 7;
+  double confidence = 8;
+  string rationale = 9;
+  string next_step = 10;
+  string error = 11;
+  string created_at = 12;
+  string completed_at = 13;
 }
 
 message ListProposalsRequest {
@@ -97,3 +130,90 @@ message AutomationPolicy {
 message ListPoliciesResponse { repeated AutomationPolicy policies = 1; }
 message UpsertPolicyRequest { AutomationPolicy policy = 1; }
 message AutomationPolicyResponse { AutomationPolicy policy = 1; }
+
+message AnalyzeProposalRequest {
+  string proposal_id = 1;
+  string profile_id = 2;
+  bool force = 3;
+}
+message AnalyzeProposalResponse { AnalysisRun run = 1; }
+message ListAnalysesRequest { string proposal_id = 1; }
+message ListAnalysesResponse { repeated AnalysisRun runs = 1; }
+message AnalysisRun {
+  string id = 1;
+  string proposal_id = 2;
+  string profile_id = 3;
+  string state = 4;
+  string provider = 5;
+  string model = 6;
+  string config_hash = 7;
+  string prompt_hash = 8;
+  string prompt_snapshot = 9;
+  string tool_trace_json = 10;
+  string response_json = 11;
+  string finding = 12;
+  string priority = 13;
+  double confidence = 14;
+  string rationale = 15;
+  string next_step = 16;
+  string error = 17;
+  string created_at = 18;
+  string started_at = 19;
+  string completed_at = 20;
+}
+
+message ListModelsRequest {}
+message ModelInfo {
+  string provider = 1;
+  string id = 2;
+  string name = 3;
+  bool authenticated = 4;
+  string credential_source = 5;
+  uint64 context_window = 6;
+  string usage_scope = 7;
+}
+message ListModelsResponse {
+  repeated ModelInfo models = 1;
+  string default_model = 2;
+}
+
+message Investigation {
+  string id = 1;
+  string proposal_id = 2;
+  string active_provider = 3;
+  string active_model = 4;
+  string status = 5;
+  string latest_remediation_json = 6;
+  repeated InvestigationEvent events = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+message InvestigationEvent {
+  uint64 sequence = 1;
+  uint64 timestamp_ms = 2;
+  string kind = 3;
+  string json = 4;
+}
+message OpenInvestigationRequest {
+  string proposal_id = 1;
+  string model = 2;
+}
+message GetInvestigationRequest { string investigation_id = 1; }
+message InvestigationResponse { Investigation investigation = 1; }
+message SendMessageRequest {
+  string investigation_id = 1;
+  string message = 2;
+}
+message WatchInvestigationRequest {
+  string investigation_id = 1;
+  uint64 after_sequence = 2;
+}
+message SetActiveModelRequest {
+  string investigation_id = 1;
+  string model = 2;
+}
+message CancelTurnRequest { string investigation_id = 1; }
+message QueueRemediationDraftRequest {
+  string investigation_id = 1;
+  string draft_json = 2;
+}
