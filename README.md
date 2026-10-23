@@ -2,8 +2,10 @@
 
 The proposed next direction is a **monorepo of independent services**, with
 Tachikoma coordinating queues, policy, AI assessment, human review and audit.
-Snitchgate, Registrygate and Kubernetesgate retain their own domain logic,
-credentials, deadlines and enforcement. Services in external repositories use
+Snitchgate and Kubernetesgate retain their own domain logic, credentials,
+deadlines and enforcement. Registrygate stays in its own repository and is
+implemented last, with standalone advisory-based automatic policy and optional
+Tachikoma approval. Services in external repositories use
 the same versioned adapter API as services in the monorepo.
 
 The [full architecture and implementation plan](docs/queue-control-plane.md)

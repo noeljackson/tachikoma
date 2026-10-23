@@ -2,9 +2,11 @@
 
 Status: proposed implementation plan, updated 23 October 2026. Tachikoma becomes
 an approval control plane with independently built service adapters. The first
-working integration is Snitchgate; Registrygate follows with Cargo, npm and Go,
-then Python. Kubernetes moves into its own service boundary. Services developed
-in other repositories use the same public API as services in this monorepo.
+working integration is Snitchgate. Complete the control plane, review interfaces,
+public adapter contract and Kubernetes extraction before implementing Registrygate.
+Registrygate stays in its own repository and uses the public API optionally;
+its later protocol order is Cargo, npm, Go, then Python. Services developed in
+other repositories use the same public API as services in this monorepo.
 
 This replaces the earlier three-repository architecture proposal. Repository
 consolidation does not combine service privileges, databases or deployments.
@@ -14,7 +16,8 @@ migration until an explicit cutover has passed the release gates below.
 ## Architecture decisions
 
 1. Use `noeljackson/tachikoma` as the monorepo, preserving Git history and the
-   service names `snitchgate`, `registrygate` and `kubernetesgate`.
+   service names `snitchgate` and `kubernetesgate`. Registrygate remains an
+   independent repository and is implemented last.
 2. Each service owns its domain logic and enforcement. Tachikoma owns requests,
    policy evaluation, shared AI coordination, human review and decision history.
 3. Use a versioned wire contract for all service integration. Optional client
@@ -131,7 +134,6 @@ crates/
 services/
   tachikoma/                 daemon composition and authenticated API
   snitchgate/                private network implementation and OpenSnitch proto
-  registrygate/              private package gateway implementation
   kubernetesgate/            private Kubernetes implementation
 apps/
   cli/                       tachikoma CLI
@@ -163,7 +165,7 @@ all supported registries, clusters or firewalls.
 Enforce these rules from `cargo metadata` in CI:
 
 - `control-plane`, `control-store` and client applications cannot depend on any
-  `services/snitchgate`, `services/registrygate` or `services/kubernetesgate`
+  `services/snitchgate` or `services/kubernetesgate`
   implementation package.
 - A producer may depend on `approval-client` or `approval-protocol`, but cannot
   depend on Tachikoma's store, AI, policy implementation or another producer.
@@ -573,10 +575,20 @@ Slack for the same live OpenSnitch request.
 
 ### Registrygate
 
-Keep Registrygate independently runnable with an explicit local-rules backend
-and optional remote Tachikoma backend. A failed remote approver never selects
+Keep Registrygate in its own repository and independently runnable. Its default
+standalone automatic mode uses deterministic local policy and a local advisory
+snapshot refreshed every configurable N minutes. Tachikoma is an optional
+approval backend, selected explicitly. A failed remote approver never selects
 local allow automatically. Each upstream registry credential and fetch permit
 stays local to the gateway.
+
+The advisory updater verifies provider downloads, builds a new immutable snapshot
+and swaps it atomically only after validation. Record source, fetched time,
+snapshot version and last successful refresh; enforce a configured maximum
+staleness and explicit failure policy. An update failure cannot turn unknown
+coverage into an allow. A changed advisory snapshot invalidates affected cached
+policy decisions. Remote/manual mode can send only policy-selected requests
+for review; it does not require Tachikoma to run the refresh schedule.
 
 Implement the common release path once within Registrygate: resolve immutable
 identity, fetch into bounded quarantine, verify available native integrity,
@@ -660,15 +672,16 @@ repositories, change registry clients or deploy workstation policy.
 | 3 Durable execution and manual review | SQLite jobs/leases/outbox, shared assessment interface, Jev/Qwen workers, TUI/web actions and Slack transport | Restart/crash recovery, stale-worker fencing, manual-first behavior, transport race tests and mixed queue fairness pass |
 | 4 Snitchgate bridge | External backend, network schema/scopes, outcome receipt, shadow comparison, isolated OpenSnitch fixtures | No late/replayed/broadened allow; audit failure denies safely; original deadline/fallback and one-owner behavior preserved |
 | 5 First live vertical slice | Opt-in manual Snitchgate requests with classification in central TUI/Slack | Sustained trial with forced daemon/worker/transport outages, clean rollback and correlated audit/receipts |
-| 6 Registrygate | Common artifact pipeline, then Cargo, npm, Go; Python follows | Stock-client protocol/integrity/bypass tests, exact-byte grant binding, outage quarantine and queue isolation |
-| 7 Kubernetes extraction | Independent read-only observation producer, then separately reviewed typed execution | No credentials in Tachikoma; manifest/resource mismatch rejection; restricted RBAC and outcome reconciliation |
-| 8 Public integration release | Adapter guide, protocol artifacts, minimal SDK, conformance suite, standalone example and supported version matrix | External service works without workspace internals; upgrade/backward-compatibility tests pass |
-| 9 Legacy retirement | Remove embedded domain imports, duplicate runners and obsolete routing after parity | Historical data still readable; live services have supported rollback and independent releases |
+| 6 Kubernetes extraction | Independent read-only observation producer, then separately reviewed typed execution | No credentials in Tachikoma; manifest/resource mismatch rejection; restricted RBAC and outcome reconciliation |
+| 7 Public integration release | Adapter guide, protocol artifacts, minimal SDK, conformance suite, standalone example and supported version matrix | External service works without workspace internals; upgrade/backward-compatibility tests pass |
+| 8 Legacy retirement | Remove embedded domain imports, duplicate runners and obsolete routing after parity | Historical data still readable; live services have supported rollback and independent releases |
+| 9 Registrygate last | Separate repository: local automatic policy and periodic advisory refresh, then optional approval backend; Cargo, npm, Go, then Python | Standalone operation without Tachikoma, atomic refresh/staleness tests, stock-client protocol/integrity/bypass tests and exact-byte grant binding |
 
-The external adapter example begins in phase 2; phase 8 packages and documents
-that proven interface. Kubernetes observation extraction can proceed after the
-contract stabilizes, but real cluster changes do not take priority over the
-network and package paths.
+The external adapter example begins in phase 2; phase 7 packages and documents
+that proven interface. Registrygate implementation waits until phases 0 through
+8 are complete. Package-shaped fixtures may exercise the generic contract early,
+but do not introduce registry protocol implementations or a proxy dependency
+into Tachikoma. Kubernetes observation and execution retain separate gates.
 
 ### First implementation PRs
 
@@ -726,9 +739,9 @@ upgrade. Include build provenance and the same supply-chain checks used locally.
 ## Source migration and rollback
 
 Import Snitchgate with recorded source commits, its tests, protocol licenses and
-existing standalone mode. Import Registrygate's design and reconcile its older
-repository/lookup ownership wording with this plan before implementing it.
-Keep the original repositories readable until independent monorepo builds,
+existing standalone mode. Registrygate's repository stays independent; update
+its integration documentation to the public contract when its final phase begins.
+Keep the original imported repositories readable until independent monorepo builds,
 releases, documentation and links are validated. Redirect or archive them only
 as a separate explicit repository-maintenance action; avoid two writable sources
 of truth for long-term service development.
@@ -749,5 +762,5 @@ in the correct central queue with classification and a visible deadline; an
 authorized reviewer chooses an exact temporary action; Snitchgate validates and
 enforces it once under the original deadline; the reported outcome appears in
 history. Repeat with each component unavailable and demonstrate the expected
-local fallback without a late permit. Registrygate and Kubernetesgate then
-reuse that contract while retaining their own enforcement semantics.
+local fallback without a late permit. Kubernetesgate reuses that contract next. Registrygate implements its own
+standalone policy path last and optionally integrates that proven contract.
