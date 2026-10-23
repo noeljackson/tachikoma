@@ -54,7 +54,25 @@ async fn response_json(mut response: reqwest::Response) -> Result<Value> {
     }
     let value: Value =
         serde_json::from_slice(&bytes).map_err(|_| anyhow!("invalid Slack response"))?;
-    ensure!(value["ok"] == true, "Slack rejected API request");
+    if value["ok"] != true {
+        let code = value["error"]
+            .as_str()
+            .filter(|code| {
+                [
+                    "invalid_blocks",
+                    "not_in_channel",
+                    "channel_not_found",
+                    "missing_scope",
+                    "ratelimited",
+                    "invalid_auth",
+                    "token_revoked",
+                    "msg_too_long",
+                ]
+                .contains(code)
+            })
+            .unwrap_or("rejected");
+        anyhow::bail!("Slack rejected API request ({code})");
+    }
     Ok(value)
 }
 impl Slack {
@@ -196,7 +214,8 @@ fn card(delivery: &Delivery) -> Value {
                 json!({"type":"section","text":{"type":"plain_text","text":clipped(&detail,2900)}}),
             );
         }
-        let elements=review.actions.iter().filter(|a| visible_action(a)).map(|action|json!({"type":"button","text":{"type":"plain_text","text":clipped(&action.label,70)},"action_id":"tachikoma_decide","value":json!({"delivery":delivery.id,"nonce":delivery.nonce,"action":action.id}).to_string()})).collect::<Vec<_>>();
+        // Slack requires action_id to be unique within its containing actions block.
+        let elements=review.actions.iter().enumerate().filter(|(_,a)| visible_action(a)).map(|(index,action)|json!({"type":"button","text":{"type":"plain_text","text":clipped(&action.label,70)},"action_id":format!("tachikoma_decide_{index}"),"value":json!({"delivery":delivery.id,"nonce":delivery.nonce,"action":action.id}).to_string()})).collect::<Vec<_>>();
         if !elements.is_empty() {
             blocks.push(json!({"type":"actions","elements":elements}));
         }
@@ -272,7 +291,13 @@ fn parse(envelope: &Value, team: &str, bot: &str) -> Option<Incoming> {
     if envelope["type"] == "interactive" && p["type"] == "block_actions" && p["team"]["id"] == team
     {
         let actions = p["actions"].as_array()?;
-        if actions.len() != 1 || actions[0]["action_id"] != "tachikoma_decide" {
+        if actions.len() != 1
+            || actions[0]["action_id"]
+                .as_str()
+                .and_then(|id| id.strip_prefix("tachikoma_decide_"))
+                .and_then(|id| id.parse::<usize>().ok())
+                .is_none_or(|index| index >= 16)
+        {
             return None;
         }
         let value: Value = serde_json::from_str(actions[0]["value"].as_str()?).ok()?;
@@ -298,6 +323,12 @@ async fn tick(
         return Ok(());
     }
     let deliveries = client.deliveries().await?;
+    ensure!(
+        !deliveries
+            .iter()
+            .any(|d| d.message.is_none() && d.review.state == ReviewState::Pending),
+        "Unconfirmed Slack delivery; use the central inbox"
+    );
     // New requests have priority. A failed reservation never falls through to an
     // untracked post, and each tick performs at most one Slack write.
     for review in client.list().await? {
@@ -319,12 +350,12 @@ async fn tick(
                 let mut body = card(&delivery);
                 let fingerprint = body.to_string();
                 body["channel"] = delivery.channel.clone().into();
-                if let Ok(value) = slack.api("chat.postMessage", body, false).await
-                    && let Some(message) = value["ts"].as_str()
-                    && client.delivered(&delivery.id, message).await.is_ok()
-                {
-                    sent.insert(delivery.id, fingerprint);
-                }
+                let value = slack.api("chat.postMessage", body, false).await?;
+                let message = value["ts"]
+                    .as_str()
+                    .context("Slack post acknowledgement missing")?;
+                client.delivered(&delivery.id, message).await?;
+                sent.insert(delivery.id, fingerprint);
                 return Ok(());
             }
             _ => break,
@@ -423,7 +454,15 @@ async fn main() -> Result<()> {
         tokio::select! {
             _=tokio::signal::ctrl_c()=>break,
             _=term.recv()=>break,
-            _=interval.tick()=>{let ready=connected.load(Ordering::Relaxed)&&client.route().await.ok().flatten().is_some();let _=client.heartbeat(if ready{"Slack connected; approval route available"}else{"Slack disconnected or route unavailable"}).await;if ready{let _=notify::notify("READY=1\nSTATUS=Slack connected");if tick(&client,&slack,&mut sent).await.is_err(){let _=notify::notify("STATUS=Approval API unavailable; no decision made");}}},
+            _=interval.tick()=>{
+                let ready=connected.load(Ordering::Relaxed)&&client.route().await.ok().flatten().is_some();
+                if ready {
+                    match tick(&client,&slack,&mut sent).await {
+                        Ok(()) => { let _=client.heartbeat("Slack connected; approval route available").await;let _=notify::notify("READY=1\nSTATUS=Slack connected"); },
+                        Err(error) => { eprintln!("Slack delivery unavailable: {error}");let _=client.heartbeat("Slack delivery or approval API unavailable").await;let _=notify::notify("STATUS=Slack delivery or approval API unavailable"); }
+                    }
+                } else { let _=client.heartbeat("Slack disconnected or route unavailable").await;let _=notify::notify("STATUS=Slack reconnecting"); }
+            },
             Some(envelope)=incoming.recv()=>{match parse(&envelope,&team,&bot){Some(Incoming::Route(route))=>{let _=client.register_route(&route).await;},Some(Incoming::Button{delivery,reply})=>{let _=client.reply(&delivery,&reply).await;},Some(Incoming::Text{actor,channel,thread,permit})=>{if let Ok(deliveries)=client.deliveries().await&& let Some(delivery)=deliveries.iter().find(|d|d.channel==channel&&d.message.as_deref()==Some(thread.as_str())){let actions=delivery.review.actions.iter().filter(|a|visible_action(a) && if permit{a.effect==Effect::Permit}else{a.effect==Effect::Block}).collect::<Vec<_>>();let selected=if permit{actions.iter().find(|a|a.scope==json!({"duration":"once"})).copied().or_else(||(actions.len()==1).then(||actions[0]))}else{(actions.len()==1).then(||actions[0])};if let Some(action)=selected{let _=client.reply(&delivery.id,&DeliveryReply{actor,channel,message:thread,nonce:delivery.nonce.clone(),action_id:action.id.clone()}).await;}}},None=>{}}
             }
         }
@@ -448,7 +487,7 @@ mod tests {
     }
     #[test]
     fn approval_buttons_parse_opaque_bindings_and_wrong_workspaces_fail() {
-        let envelope = json!({"type":"interactive","payload":{"type":"block_actions","team":{"id":"T1"},"user":{"id":"U1"},"container":{"channel_id":"C1","message_ts":"1.000001"},"actions":[{"action_id":"tachikoma_decide","value":json!({"delivery":"delivery-1","nonce":"nonce-1234","action":"allow-once"}).to_string()}]}});
+        let envelope = json!({"type":"interactive","payload":{"type":"block_actions","team":{"id":"T1"},"user":{"id":"U1"},"container":{"channel_id":"C1","message_ts":"1.000001"},"actions":[{"action_id":"tachikoma_decide_0","value":json!({"delivery":"delivery-1","nonce":"nonce-1234","action":"allow-once"}).to_string()}]}});
         let Some(Incoming::Button { delivery, reply }) = parse(&envelope, "T1", "B1") else {
             panic!("expected button")
         };
@@ -463,6 +502,82 @@ mod tests {
             label: "Large".into(),
             effect: Effect::Permit,
             scope: json!({"value":"a".repeat(1900)})
+        }));
+    }
+    #[test]
+    fn card_actions_have_unique_slack_identifiers_and_show_exact_scopes() {
+        let actions = vec![
+            ReviewAction {
+                id: "allow".into(),
+                label: "Allow once".into(),
+                effect: Effect::Permit,
+                scope: json!({"duration":"once"}),
+            },
+            ReviewAction {
+                id: "deny".into(),
+                label: "Deny once".into(),
+                effect: Effect::Block,
+                scope: json!({"duration":"once"}),
+            },
+        ];
+        let request = SubmitRequest {
+            queue: "network.egress".into(),
+            producer_request_id: "fixture".into(),
+            nonce: "fixture-nonce-1234".into(),
+            idempotency_key: "fixture".into(),
+            schema_id: "fixture".into(),
+            subject: json!({}),
+            evidence: json!({}),
+            action_ids: vec!["allow".into(), "deny".into()],
+            expires_at_ms: epoch_ms() + 60_000,
+            summary: "Fixture".into(),
+        };
+        let review = Review {
+            id: "fixture".into(),
+            producer: "fixture".into(),
+            service_kind: "snitchgate".into(),
+            revision: 1,
+            manifest_revision: 1,
+            subject_digest: String::new(),
+            evidence_digest: String::new(),
+            created_at_ms: epoch_ms(),
+            expires_at_ms: epoch_ms() + 60_000,
+            mode: Mode::Manual,
+            state: ReviewState::Pending,
+            actions,
+            request,
+            decision: None,
+            assessment: None,
+            receipt: None,
+        };
+        let delivery = Delivery {
+            id: "fixture".into(),
+            realm: "slack:T1".into(),
+            channel: "C1".into(),
+            message: None,
+            nonce: "nonce".into(),
+            review,
+            status: "newly_reserved".into(),
+        };
+        let body = card(&delivery);
+        let buttons = body["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["type"] == "actions")
+            .unwrap()["elements"]
+            .as_array()
+            .unwrap();
+        let identifiers = buttons
+            .iter()
+            .map(|b| b["action_id"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(buttons.len(), 2);
+        assert_eq!(identifiers.len(), 2);
+        assert!(body["blocks"].as_array().unwrap().iter().any(|b| {
+            b["text"]["text"]
+                .as_str()
+                .is_some_and(|s| s.contains("Exact scope: {\"duration\":\"once\"}"))
         }));
     }
 }

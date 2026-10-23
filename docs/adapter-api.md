@@ -26,6 +26,7 @@ Principals have a role and explicit queue allowlist:
 | `reviewer` | Read and decide authorized queues; start/cancel advisory investigations |
 | `worker` | Claim authorized jobs and complete only a live owned lease |
 | `transport` | Route Slack deliveries and relay allowlisted actors through bound messages |
+| `monitor` | Authorized queue/process health only; no request, job or decision access |
 | `admin` | Queue/identity administration and review |
 
 Enrollment returns a random 256-bit credential once. The daemon stores only its

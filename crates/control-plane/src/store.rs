@@ -107,7 +107,8 @@ impl Principal {
         self.admin() || self.spec.queues.iter().any(|q| q == queue)
     }
     fn read(&self, review: &Review) -> bool {
-        self.queue(&review.request.queue)
+        self.spec.role != Role::Monitor
+            && self.queue(&review.request.queue)
             && (self.spec.role != Role::Producer || self.spec.id == review.producer)
     }
     fn require(&self, role: Role) -> Result<()> {
@@ -855,6 +856,9 @@ impl Store {
         Ok(review)
     }
     pub fn events(&mut self, actor: &Principal, after: i64) -> Result<Events> {
+        if actor.spec.role == Role::Monitor {
+            return Err(Fault::forbidden());
+        }
         self.expire(now_ms())?;
         let rows = self.db.prepare("SELECT seq,request_id,queue,producer,kind,at FROM events WHERE seq>?1 ORDER BY seq LIMIT 500")?.query_map([after], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(4)?,r.get::<_,i64>(5)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
         let mut result = Events {
@@ -2127,5 +2131,46 @@ mod tests {
             .unwrap();
         input.idempotency_key = "pressure-interactive".into();
         assert!(store.submit(&producer, input).is_ok());
+    }
+    #[test]
+    fn monitor_sees_readiness_without_request_or_decision_authority() {
+        let (mut store, producer) = fixture();
+        let review = store.submit(&producer, submission()).unwrap();
+        let enrolled = store
+            .enroll(
+                &admin(),
+                PrincipalSpec {
+                    id: "monitor".into(),
+                    role: Role::Monitor,
+                    queues: vec!["example.review".into()],
+                    service_kind: String::new(),
+                    realm: String::new(),
+                    actors: vec![],
+                },
+            )
+            .unwrap();
+        let monitor = store.authenticate(&enrolled.credential).unwrap();
+        assert_eq!(store.health(&monitor).unwrap().queues.len(), 1);
+        assert!(store.get(&monitor, &review.id).is_err());
+        assert!(
+            store
+                .list(&monitor, i64::MAX, "all")
+                .unwrap()
+                .reviews
+                .is_empty()
+        );
+        assert!(store.events(&monitor, 0).is_err());
+        assert!(
+            store
+                .claim(
+                    &monitor,
+                    ClaimJob {
+                        kind: "assessment".into()
+                    }
+                )
+                .is_err()
+        );
+        assert!(store.decide(&monitor, &review.id, decide()).is_err());
+        assert!(store.submit(&monitor, submission()).is_err());
     }
 }

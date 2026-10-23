@@ -14,6 +14,8 @@ pub enum Role {
     Reviewer,
     Worker,
     Transport,
+    /// Queue and process health only; cannot read requests, claim jobs or decide.
+    Monitor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

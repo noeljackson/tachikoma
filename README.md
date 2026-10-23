@@ -101,6 +101,7 @@ analysis and transcript files in place. They do not revive historical approvals.
 ## Status
 
 The platform and service adapters are implemented and tested with isolated
-fixtures. The existing workstation Snitchgate installation is unchanged until
-an explicit cutover using the operations guide. No registry implementation or
-live Kubernetes executor is included.
+fixtures. Noelarchy now deploys the workstation network path through Tachikoma,
+with separate system workers and authenticated health-based GUI fallback. See
+`/home/noel/noelarchy/docs/snitchgate-live.md` for that machine’s deployment and
+rollback workflow. No registry implementation or live Kubernetes executor is included.

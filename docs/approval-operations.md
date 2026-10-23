@@ -1,9 +1,11 @@
 # Local approval platform operations
 
-The source is ready for a controlled trial. These steps do not replace the
-workstation's live Snitchgate installation automatically. Keep the current
-binary, configuration, encrypted credentials and handover service until the
-new path has passed its fixture and manual cutover checks. Registrygate is last.
+The workstation network path is deployed through Noelarchy’s system workers,
+scoped encrypted credentials and authenticated readiness guard. Its canonical
+workflow is `/home/noel/noelarchy/docs/snitchgate-live.md` and
+`make -C /home/noel/noelarchy snitchgate-services-status`. The generic templates
+below support other local installations; they do not replace Noelarchy’s
+system units. Registrygate remains last.
 
 ## Build and start
 
@@ -181,10 +183,10 @@ permanent permission or tool command is accepted from a model or generic API.
 Do not point a demo/test at the real daemon socket. Docker conformance starts
 isolated broker sockets and mock OpenSnitch clients and providers. For live
 handover on this workstation, update Noelarchy's canonical units, credential
-mapping, narrow executable egress rules and readiness watcher together. The
-current watcher explicitly watches the old Slack system unit; it must be changed
-before a central transport takes authority. Confirm central API/worker/route
-readiness, then use the existing reversible GUI handover. Never restart
+mapping, narrow executable egress rules and readiness watcher together.
+Noelarchy’s watcher checks the new Slack/classifier units and authenticates to
+queue health as a dedicated monitor with no request or decision authority.
+Confirm central API/worker/route readiness, then use the reversible GUI handover. Never restart
 OpenSnitch or rewrite `/etc` policy as a test shortcut.
 
 ## Kubernetesgate
