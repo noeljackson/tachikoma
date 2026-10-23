@@ -27,7 +27,7 @@ anyhow = "1.0.100"
 # The dashboard uses default template paths, so avoid the optional config
 # parser and its unmaintained basic-toml dependency.
 askama = { version = "0.16.0", default-features = false, features = ["derive", "std", "urlencode"] }
-async-trait = "0.1.89"
+async-trait = "0.1.92"
 axum = "0.8.8"
 buffa = "0.8.1"
 clap = { version = "4.5.60", features = ["derive"] }
