@@ -267,6 +267,12 @@ processes running as Noel. Remote deployment uses authenticated TLS with
 individually enrolled service identities. Reviewer and worker credentials have
 separate roles and permissions.
 
+Scoped service credentials provide application authentication, not isolation
+from hostile processes sharing the same OS account. Stronger service isolation
+uses distinct service accounts and verified filesystem/process restrictions.
+Workstation compatibility under Noel's account remains an explicit deployment
+tradeoff rather than a claim of isolation between all applications.
+
 No callback URL is accepted from a request. Producers initiate outbound watches
 or polls, and evidence workers claim explicitly authorized jobs. This keeps a
 new service from turning Tachikoma into an arbitrary HTTP client.
@@ -313,6 +319,11 @@ Use authenticated online decision delivery initially. Offline signed grants,
 reusable authority and disconnected caching are later capabilities requiring a
 separate trust-key, consumption and revocation design. Admission caching and
 artifact content caching do not imply authorization caching.
+
+Tightening policy stops new affected grants and invalidates pending review
+contexts. Initial grants are short-lived and single-use; do not promise instant
+revocation of a decision already delivered to a producer. Stronger reusable or
+revocable grants need a later online validation/lease design.
 
 The scope schema is domain-specific but reviewable through generic forms. An
 OpenSnitch five-minute temporary rule must show its effective process and
@@ -617,6 +628,10 @@ and OpenBao credential provisioning. The monorepo contains generic templates
 and documented credential names, never Bao tokens or machine-specific secret
 loading scripts. Deliver separate systemd credentials to Jev, Slack and each
 service; no child inherits the full workstation secret environment.
+Systemd credentials are delivered as files under the unit's credential directory;
+keep them out of process arguments and ordinary environment variables. Their
+access controls must match the chosen service-account isolation model.
+[Systemd credential handling](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#Credentials).
 
 Keep bootstrap egress independent of the request being reviewed. DNS, the
 configured model/Jev endpoints, Slack and approved registry acquisition paths
