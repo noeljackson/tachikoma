@@ -84,3 +84,8 @@ install-workers:
 .PHONY: test-browser
 test-browser:
 	docker build --target browser-test --tag tachikoma:browser-test .
+
+.PHONY: install-cli
+install-cli:
+	cargo build --release --locked -p tachikoma --bin tachikoma
+	install -Dm755 target/release/tachikoma "$(INSTALL_BIN_DIR)/tachikoma"

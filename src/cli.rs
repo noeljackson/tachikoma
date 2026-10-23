@@ -57,7 +57,7 @@ enum Command {
     },
     /// Open the terminal UI with service queues and proposal investigations.
     Tui {
-        /// Start in this adapter's queue (Tab switches queues).
+        /// Start in this adapter's queue.
         #[arg(long)]
         adapter: Option<String>,
         /// Connect to the separately started legacy proposal daemon.

@@ -1,16 +1,19 @@
-//! Generic review UI. It depends only on the public adapter client and contracts.
-use anyhow::Result;
+//! Focused review navigation over the public approval API.
+mod input;
+mod state;
+use anyhow::{Result, anyhow};
 use approval_client::Client;
 use approval_protocol::*;
-use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste, Event, EventStream};
 use futures_util::StreamExt;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap},
 };
+use state::{App, Chat, ChatFocus, Command, Focus, Menu};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn now() -> i64 {
@@ -20,327 +23,118 @@ fn now() -> i64 {
         .as_millis()
         .min(i64::MAX as u128) as i64
 }
-#[derive(Default)]
-struct App {
-    reviews: Vec<Review>,
-    history: Vec<Review>,
-    health: Option<Health>,
-    queue: Option<String>,
-    selected: Option<String>,
-    tab: usize,
-    search: String,
-    searching: bool,
-    scroll: u16,
-    action_index: usize,
-    action_menu: bool,
-    action_target: Option<(String, i64)>,
-    selection_lost: bool,
-    notice: String,
-    connected: bool,
-    chat: Option<Conversation>,
-    chat_input: String,
-    chat_model: Option<String>,
+async fn bounded<T>(future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    tokio::time::timeout(Duration::from_secs(3), future)
+        .await
+        .map_err(|_| anyhow!("approval API timed out"))?
 }
 impl App {
-    fn rows(&self) -> Vec<&Review> {
-        let query = self.search.to_lowercase();
-        let rows = if self.tab == 1 {
-            &self.history
-        } else {
-            &self.reviews
-        };
-        rows.iter()
-            .filter(|r| {
-                self.queue
-                    .as_ref()
-                    .is_none_or(|q| *q == r.request.queue || *q == r.service_kind)
-            })
-            .filter(|r| {
-                format!(
-                    "{} {} {} {} {}",
-                    r.id, r.service_kind, r.request.queue, r.request.summary, r.request.subject
-                )
-                .to_lowercase()
-                .contains(&query)
-            })
-            .collect()
-    }
-    fn sync(&mut self) {
-        let rows = self.rows();
-        if let Some(selected) = &self.selected {
-            if !rows.iter().any(|r| r.id == *selected) {
-                self.selected = None;
-                self.selection_lost = true;
-                self.action_menu = false;
-                self.action_target = None;
-                self.scroll = 0;
-                self.action_index = 0;
-            }
-        } else if !self.selection_lost {
-            self.selected = rows.first().map(|r| r.id.clone());
-        }
-    }
-    fn navigate(&mut self, delta: isize) {
-        let rows = self.rows();
-        let current = self
-            .selected
-            .as_ref()
-            .and_then(|id| rows.iter().position(|r| r.id == *id));
-        let index = current
-            .map(|index| {
-                index
-                    .saturating_add_signed(delta)
-                    .min(rows.len().saturating_sub(1))
-            })
-            .unwrap_or(0);
-        self.selected = rows.get(index).map(|r| r.id.clone());
-        self.selection_lost = false;
-        self.scroll = 0;
-        self.action_index = 0;
-    }
-    fn queues(&self) -> Vec<Option<String>> {
-        let mut names = std::collections::BTreeSet::new();
-        if let Some(health) = &self.health {
-            for q in &health.queues {
-                names.insert(q.manifest.id.clone());
-            }
-        }
-        for r in self.reviews.iter().chain(&self.history) {
-            names.insert(r.request.queue.clone());
-        }
-        if let Some(queue) = &self.queue {
-            names.insert(queue.clone());
-        }
-        std::iter::once(None)
-            .chain(names.into_iter().map(Some))
-            .collect()
-    }
-    fn cycle(&mut self, back: bool) {
-        let queues = self.queues();
-        let current = queues.iter().position(|q| *q == self.queue).unwrap_or(0);
-        let next = if back {
-            (current + queues.len() - 1) % queues.len()
-        } else {
-            (current + 1) % queues.len()
-        };
-        self.queue = queues[next].clone();
-        self.selected = None;
-        self.selection_lost = false;
-        self.sync();
-    }
-    fn selected(&self) -> Option<&Review> {
-        let id = self.selected.as_ref()?;
-        self.rows().into_iter().find(|r| r.id == *id)
-    }
     async fn refresh(&mut self, client: &Client) {
-        let result = async {
-            Ok::<_, anyhow::Error>((
-                client.list().await?,
-                client.list_state("history").await?,
-                client.health().await?,
-            ))
-        }
+        let result = bounded(async {
+            tokio::try_join!(client.list(), client.list_state("history"), client.health())
+        })
         .await;
         match result {
             Ok((reviews, history, health)) => {
                 self.reviews = reviews;
                 self.history = history;
                 self.health = Some(health);
+                if !self.connected && self.notice.starts_with("Disconnected") {
+                    self.notice = "Reconnected.".into();
+                }
                 self.connected = true;
                 self.sync();
             }
             Err(_) => {
                 self.connected = false;
                 self.notice =
-                    "Disconnected. Decisions are disabled until a fresh snapshot is available."
-                        .into();
+                    "Disconnected. Review actions are disabled until reconnection.".into();
             }
         }
     }
     async fn refresh_chat(&mut self, client: &Client) {
-        if let Some(chat) = &self.chat {
-            match client.conversation(&chat.request_id).await {
-                Ok(chat) => self.chat = Some(chat),
-                Err(_) => self.notice = "Investigation unavailable; no action was taken.".into(),
+        if let Some(chat) = &mut self.chat {
+            match bounded(client.conversation(&chat.conversation.request_id)).await {
+                Ok(conversation) => chat.conversation = conversation,
+                Err(_) => self.notice = "Conversation unavailable. Your draft is kept.".into(),
             }
         }
     }
-    async fn open_chat(&mut self, client: &Client) {
-        let Some(review) = self.selected() else {
-            return;
-        };
-        match client.conversation(&review.id).await {
-            Ok(chat) => {
-                self.chat = Some(chat);
-                self.chat_input.clear();
-                self.chat_model = None;
-                self.scroll = 0;
-            }
-            Err(_) => self.notice = "Investigation unavailable for this request.".into(),
-        }
-    }
-    fn cycle_model(&mut self) {
-        let Some(chat) = &self.chat else {
-            return;
-        };
-        let models = self
-            .health
-            .as_ref()
-            .and_then(|h| h.queues.iter().find(|q| q.manifest.id == chat.queue))
-            .and_then(|q| q.manifest.assessment.as_ref())
-            .map(|p| p.models.clone())
-            .unwrap_or_default();
-        let choices = std::iter::once(None)
-            .chain(models.into_iter().map(Some))
-            .collect::<Vec<_>>();
-        let index = choices
-            .iter()
-            .position(|m| m == &self.chat_model)
-            .unwrap_or(0);
-        self.chat_model = choices[(index + 1) % choices.len()].clone();
-    }
-    async fn send_chat(&mut self, client: &Client) {
-        let Some(chat) = &self.chat else {
-            return;
-        };
-        if self.chat_input.trim().is_empty() || chat.status == "running" {
-            return;
-        }
-        let input = SendMessage {
-            message: self.chat_input.clone(),
-            model: self.chat_model.clone(),
-            idempotency_key: format!(
-                "tui-{}-{}",
-                std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos()
-            ),
-        };
-        match client.send_message(&chat.request_id, &input).await {
-            Ok(chat) => {
-                self.chat = Some(chat);
-                self.chat_input.clear();
-                self.notice = "Investigation queued. It cannot change the decision.".into();
-            }
-            Err(_) => self.notice =
-                "Message rejected or delivery uncertain. Refresh the conversation before retrying."
-                    .into(),
-        }
-    }
-    async fn decide(&mut self, client: &Client, permit: bool) {
-        if !self.connected || self.tab != 0 {
-            return;
-        }
-        let Some(review) = self.selected() else {
-            return;
-        };
-        if review.expires_at_ms <= now() {
-            self.notice = "Request expired; no decision sent.".into();
-            return;
-        }
-        let actions = review
-            .actions
-            .iter()
-            .filter(|a| {
-                if permit {
-                    a.effect == Effect::Permit
-                } else {
-                    a.effect == Effect::Block
-                }
-            })
-            .collect::<Vec<_>>();
-        let Some(action) = actions.get(if permit {
-            self.action_index % actions.len().max(1)
-        } else {
-            0
-        }) else {
-            self.notice = "This request does not offer that action.".into();
-            return;
-        };
-        let action_id = action.id.clone();
-        self.send_action(client, action_id).await;
-    }
-    async fn send_action(&mut self, client: &Client, action_id: String) {
-        if !self.connected || self.tab != 0 {
-            return;
-        }
-        let Some(review) = self.selected() else {
-            return;
-        };
-        if review.expires_at_ms <= now() {
-            self.notice = "Request expired; no decision sent.".into();
-            return;
-        }
-        let Some(action) = review.actions.iter().find(|a| a.id == action_id) else {
-            return;
-        };
-        let id = review.id.clone();
-        let revision = review.revision;
-        let action_id = action.id.clone();
-        let label = action.label.clone();
-        self.notice = match client
-            .decide(
-                &id,
-                &DecideRequest {
-                    revision,
-                    action_id,
+    async fn execute(&mut self, client: &Client, command: Command) -> bool {
+        match command {
+            Command::Quit=>return true,
+            Command::Refresh=>{self.refresh(client).await;self.refresh_chat(client).await;},
+            Command::OpenChat(id)=>match bounded(client.conversation(&id)).await {
+                Ok(conversation)=>{
+                    self.chat=Some(Chat {conversation,input:Default::default(),model:None,focus:ChatFocus::Composer,pending_send:None});
+                    self.focus=Focus::Details;self.scroll=0;
                 },
-            )
-            .await
-        {
-            Ok(review) => format!(
-                "{} recorded for {}. Enforcement: {}",
-                display_text(&label),
-                id,
-                if review.receipt.is_some() {
-                    "producer reported"
-                } else {
-                    "not yet reported"
-                }
-            ),
-            Err(_) => {
-                "Decision rejected. Request may have expired, changed, or settled elsewhere.".into()
+                Err(_)=>self.notice="Investigation unavailable for this request.".into()
+            },
+            Command::SendChat {id,input}=>match bounded(client.send_message(&id,&input)).await {
+                Ok(conversation)=>if let Some(chat)=&mut self.chat && chat.conversation.request_id==id {
+                    chat.conversation=conversation;chat.input.clear();chat.pending_send=None;
+                    self.notice="Investigation queued. Decisions remain separate.".into();
+                },
+                Err(_)=>self.notice="Message delivery uncertain. Enter retries the same message; your draft is kept.".into()
+            },
+            Command::CancelChat(id)=>match bounded(client.cancel_conversation(&id)).await {
+                Ok(conversation)=>if let Some(chat)=&mut self.chat && chat.conversation.request_id==id {
+                    chat.conversation=conversation;chat.pending_send=None;self.notice="Turn cancelled. Your draft is kept.".into();
+                },
+                Err(_)=>self.notice="Cancellation not confirmed. Refresh to check the turn.".into()
+            },
+            Command::Decide {target,action}=>{
+                if !self.action_current(&target,&action) {self.notice="Request changed or expired. No decision sent.".into();return false;}
+                let result=bounded(client.decide(&target.id,&DecideRequest {revision:target.revision,action_id:action.id})).await;
+                self.notice=match result {
+                    Ok(_)=>format!("{} recorded. Waiting for the producer outcome.",display_text(&action.label)),
+                    Err(_)=>"Decision not confirmed. Refresh the request before trying again.".into()
+                };
+                self.refresh(client).await;
             }
-        };
-        self.refresh(client).await;
+        }
+        false
     }
 }
-fn panel(title: impl Into<String>) -> Block<'static> {
-    Block::default().title(title.into()).borders(Borders::ALL)
+fn panel(title: impl Into<String>, focused: bool) -> Block<'static> {
+    Block::default()
+        .title(title.into())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(if focused {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        }))
+        .title_style(if focused {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        })
 }
-fn draw(frame: &mut Frame, app: &App) {
-    if frame.area().width < 70 || frame.area().height < 18 {
-        frame.render_widget(
-            Paragraph::new("Tachikoma needs at least 70 x 18. Resize, or press q to quit."),
-            frame.area(),
-        );
-        return;
+fn selection(focused: bool) -> Style {
+    if focused {
+        Style::default()
+            .bg(Color::DarkGray)
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Gray)
     }
-    let vertical = Layout::vertical([
-        Constraint::Length(2),
-        Constraint::Min(8),
-        Constraint::Length(4),
-    ])
-    .split(frame.area());
-    frame.render_widget(
-        Tabs::new(["1 Inbox", "2 History", "3 Health"])
-            .select(app.tab)
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        vertical[0],
-    );
-    let columns =
-        Layout::horizontal([Constraint::Length(26), Constraint::Min(20)]).split(vertical[1]);
+}
+fn draw_queues(frame: &mut Frame, area: Rect, app: &App) {
     let queues = app.queues();
+    let focused = app.focus == Focus::Queues && app.chat.is_none();
+    let selected = if focused {
+        &app.queue_cursor
+    } else {
+        &app.queue
+    };
     let items = queues
         .iter()
         .map(|queue| {
-            let label = queue.as_deref().unwrap_or("All");
             let count = app
                 .health
                 .as_ref()
@@ -356,233 +150,523 @@ fn draw(frame: &mut Frame, app: &App) {
                         .sum::<u64>()
                 })
                 .unwrap_or(0);
-            ListItem::new(display_text(&format!("{label} ({count})")))
+            ListItem::new(display_text(&format!(
+                "{} ({count})",
+                queue.as_deref().unwrap_or("All queues")
+            )))
         })
         .collect::<Vec<_>>();
     frame.render_stateful_widget(
         List::new(items)
-            .block(panel(" Service / queue "))
-            .highlight_style(Style::default().fg(Color::Cyan))
+            .block(panel(" Queues ", focused))
+            .highlight_style(selection(focused))
             .highlight_symbol("▶ "),
-        columns[0],
-        &mut ListState::default().with_selected(queues.iter().position(|q| *q == app.queue)),
+        area,
+        &mut ListState::default().with_selected(queues.iter().position(|q| q == selected)),
     );
-    if let Some(chat) = &app.chat {
-        let areas = Layout::vertical([Constraint::Min(4), Constraint::Length(5)]).split(columns[1]);
-        let mut lines = vec![
-            Line::raw(display_text(&format!(
-                "{} / {} — {}",
-                chat.queue, chat.request_id, chat.status
-            ))),
-            Line::raw("Advisory conversation. No tools or permission to act."),
-        ];
-        for message in &chat.messages {
-            lines.push(Line::raw(display_text(&format!(
-                "\n{} / {}\n{}",
-                message.role, message.model, message.content
-            ))));
-        }
-        frame.render_widget(
-            Paragraph::new(Text::from(lines))
-                .wrap(Wrap { trim: false })
-                .scroll((app.scroll, 0))
-                .block(panel(" Investigate ")),
-            areas[0],
-        );
-        frame.render_widget(
-            Paragraph::new(display_text(&app.chat_input))
-                .wrap(Wrap { trim: false })
-                .block(panel(format!(
-                    " Message — model: {} ",
-                    app.chat_model.as_deref().unwrap_or("worker default")
-                ))),
-            areas[1],
-        );
-    } else if app.tab == 2 {
-        let mut lines = vec![Line::raw(if app.connected {
-            "Control plane connected"
-        } else {
-            "DISCONNECTED — review disabled"
-        })];
-        if let Some(health) = &app.health {
-            lines.push(Line::raw(format!(
-                "Jobs: {} ready, {} leased",
-                health.ready_jobs, health.leased_jobs
-            )));
-            for service in &health.services {
-                lines.push(Line::raw(display_text(&format!(
-                    "{} / {} — heartbeat {}s ago — {}",
-                    service.service_kind,
-                    service.id,
-                    (now() - service.last_seen_ms).max(0) / 1000,
-                    service.detail
-                ))));
-            }
-            for queue in &health.queues {
-                lines.push(Line::raw(display_text(&format!(
-                    "{} — {:?} — {} pending, {} settled",
-                    queue.manifest.id, queue.manifest.mode, queue.pending, queue.settled
-                ))));
-            }
-        }
-        frame.render_widget(
-            Paragraph::new(Text::from(lines))
-                .wrap(Wrap { trim: false })
-                .scroll((app.scroll, 0))
-                .block(panel(" Health ")),
-            columns[1],
-        );
+}
+fn draw_requests(frame: &mut Frame, area: Rect, app: &App) {
+    let focused = app.focus == Focus::Requests;
+    let rows = app.rows();
+    let title = if app.tab == 1 {
+        " History "
     } else {
-        let areas = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(columns[1]);
-        let rows = app.rows();
-        if rows.is_empty() {
-            frame.render_widget(Paragraph::new("No requests in this view.\nRegister a producer and submit a request through the public approval API.\nTab changes queue; / searches; 3 shows health.").wrap(Wrap{trim:false}).block(panel(" Requests ")),areas[0]);
+        " Requests "
+    };
+    if rows.is_empty() {
+        let text = if !app.filter.text.is_empty() {
+            "No matching requests.\n/ edits the filter; Esc clears it."
+        } else if app.tab == 1 {
+            "No previous requests in this queue.\n← selects another queue."
         } else {
-            let items = rows
-                .iter()
-                .map(|r| {
-                    let age = if r.state == ReviewState::Pending {
-                        format!("{}s left", (r.expires_at_ms - now()).max(0) / 1000)
-                    } else {
-                        format!("{:?}", r.state)
-                    };
-                    let assessment = r
-                        .assessment
-                        .as_ref()
-                        .map(|a| {
-                            format!(
-                                "{} {}",
-                                a.category,
-                                a.confidence
-                                    .map(|c| format!("{:.0}%", 100.0 * c))
-                                    .unwrap_or_default()
-                            )
-                        })
-                        .unwrap_or_else(|| "assessment pending/not requested".into());
-                    ListItem::new(display_text(&format!(
-                        "{} | {} | {} | {}",
-                        r.request.summary, age, r.request.queue, assessment
-                    )))
-                })
-                .collect::<Vec<_>>();
-            let selected = app
-                .selected
-                .as_ref()
-                .and_then(|id| rows.iter().position(|r| r.id == *id));
-            frame.render_stateful_widget(
-                List::new(items)
-                    .block(panel(" Requests "))
-                    .highlight_style(Style::default().fg(Color::Cyan))
-                    .highlight_symbol("▶ "),
-                areas[0],
-                &mut ListState::default().with_selected(selected),
-            );
-        }
-        let text=app.selected().map(|review|{
-            let permits=review.actions.iter().filter(|a|a.effect==Effect::Permit).collect::<Vec<_>>();let action=permits.get(app.action_index%permits.len().max(1));
-            let mut scope=action.map(|a|format!("ALLOW CHOICE: {}\n{}",a.label,a.scope)).unwrap_or_else(||"No permit action offered.".into());
-            if app.action_menu { scope.push_str("\n\nAvailable actions (arrows select, Enter commits):\n"); scope.push_str(&review.actions.iter().enumerate().map(|(index, action)| format!("{} {} — {:?} — {}", if index == app.action_index % review.actions.len().max(1) { ">" } else { " " }, action.label, action.effect, action.scope)).collect::<Vec<_>>().join("\n")); }
-            let assessment=review.assessment.as_ref().map(|a|format!("Classification: {} {:?}\nJev: {} / LLM: {}\n{}\n{}",a.category,a.confidence,a.jev_model,a.llm_model,a.state,a.rationale)).unwrap_or_else(||"No completed assessment. Human review is still required.".into());
-            let outcome=review.decision.as_ref().map(|d|format!("Decision: {} by {}\nScope: {}\nProducer outcome: {}",d.action.label,d.actor,d.action.scope,review.receipt.as_ref().map(|r|format!("{:?}: {}",r.state,r.reason)).unwrap_or_else(||"not reported".into()))).unwrap_or_default();
-            let subject=serde_json::to_string_pretty(&review.request.subject).unwrap_or_default();let evidence=serde_json::to_string_pretty(&review.request.evidence).unwrap_or_default();
-            display_text(&format!("{} / {}\n{} — revision {} — {:?}\nMode: {:?}\n\n{}\n\n{}\n\n{}\n\nSubject:\n{}\nEvidence:\n{}",review.service_kind,review.request.queue,review.id,review.revision,review.state,review.mode,scope,assessment,outcome,subject,evidence))
-        }).unwrap_or_else(||"The control plane records scoped decisions; each service validates and enforces them locally.\nUse `tachikoma approval --help` for enrollment and submissions.".into());
+            "Nothing waiting for review.\nExisting rules keep handling traffic.\n2 opens History; 3 shows Health."
+        };
         frame.render_widget(
             Paragraph::new(text)
                 .wrap(Wrap { trim: false })
-                .scroll((app.scroll, 0))
-                .block(panel(" Inspect / exact decision scope ")),
-            areas[1],
+                .block(panel(title, focused)),
+            area,
         );
+        return;
     }
-    let footer = if app.chat.is_some() {
-        format!(
-            "Enter send | F2 model | PgUp/PgDn scroll | Ctrl-C cancel turn | Esc back\n{}",
-            display_text(&app.notice)
-        )
-    } else if app.searching {
-        format!(
-            "Search: {} | Enter apply / Esc clear",
-            display_text(&app.search)
-        )
-    } else {
-        format!(
-            "Tab queue | 1/2/3 view | ↑/↓ or j/k select | i investigate | Enter actions | a allow / d deny | t scope | / search | PgUp/PgDn details | q quit\n{}",
-            display_text(&app.notice)
-        )
+    let items = rows
+        .iter()
+        .map(|review| {
+            let status = if review.state == ReviewState::Pending {
+                format!("{}s left", (review.expires_at_ms - now()).max(0) / 1000)
+            } else {
+                format!("{:?}", review.state)
+            };
+            let opinion = review
+                .assessment
+                .as_ref()
+                .map(|a| {
+                    format!(
+                        "{} {}",
+                        a.category,
+                        a.confidence
+                            .map(|c| format!("{:.0}%", c * 100.0))
+                            .unwrap_or_default()
+                    )
+                })
+                .unwrap_or_else(|| "assessment pending".into());
+            ListItem::new(vec![
+                Line::raw(display_text(&review.request.summary)),
+                Line::styled(
+                    display_text(&format!("{status} · {opinion}")),
+                    Style::default().fg(Color::Gray),
+                ),
+            ])
+        })
+        .collect::<Vec<_>>();
+    let selected = app
+        .selected
+        .as_ref()
+        .and_then(|id| rows.iter().position(|r| r.id == *id));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(panel(title, focused))
+            .highlight_style(selection(focused))
+            .highlight_symbol("▶ "),
+        area,
+        &mut ListState::default().with_selected(selected),
+    );
+}
+fn details(app: &App) -> String {
+    let Some(review) = app.selected() else {
+        return if app.selection_lost {
+            "The selected request settled or changed.\nReturn to Requests and select another before acting.".into()
+        } else {
+            "Select a request to inspect its facts, classification and exact action scopes.".into()
+        };
     };
+    let classification = review
+        .assessment
+        .as_ref()
+        .map(|a| {
+            format!(
+                "Classification: {} — {}\nJev: {}\nLLM: {}\n{}",
+                a.category,
+                a.confidence
+                    .map(|c| format!("{:.0}% confidence", c * 100.0))
+                    .unwrap_or_else(|| "confidence unavailable".into()),
+                a.jev_model,
+                a.llm_model,
+                a.rationale
+            )
+        })
+        .unwrap_or_else(|| {
+            "Classification pending or not requested. Human review remains required.".into()
+        });
+    let outcome = review
+        .decision
+        .as_ref()
+        .map(|d| {
+            format!(
+                "Decision: {} by {}\nExact scope: {}\nProducer outcome: {}\n",
+                d.action.label,
+                d.actor,
+                d.action.scope,
+                review
+                    .receipt
+                    .as_ref()
+                    .map(|r| format!("{:?}: {}", r.state, r.reason))
+                    .unwrap_or_else(|| "not reported".into())
+            )
+        })
+        .unwrap_or_default();
+    let actions = review
+        .actions
+        .iter()
+        .map(|a| format!("{} — {:?}\n{}", a.label, a.effect, a.scope))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    display_text(&format!(
+        "{}\n{} · {:?} · {:?}\n{}s remaining\n\n{}\n\n{}\nActions and exact scopes:\n{}\n\nSubject:\n{}\n\nEvidence:\n{}\n\nRequest: {} / revision {}",
+        review.request.summary,
+        review.request.queue,
+        review.state,
+        review.mode,
+        (review.expires_at_ms - now()).max(0) / 1000,
+        classification,
+        outcome,
+        actions,
+        serde_json::to_string_pretty(&review.request.subject).unwrap_or_default(),
+        serde_json::to_string_pretty(&review.request.evidence).unwrap_or_default(),
+        review.id,
+        review.revision
+    ))
+}
+fn draw_details(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(
-        Paragraph::new(footer)
+        Paragraph::new(details(app))
             .wrap(Wrap { trim: false })
-            .block(panel(if app.connected {
+            .scroll((app.scroll, 0))
+            .block(panel(
+                " Details / exact scope ",
+                app.focus == Focus::Details,
+            )),
+        area,
+    );
+}
+fn draw_health(frame: &mut Frame, area: Rect, app: &App) {
+    let mut lines = vec![Line::raw(if app.connected {
+        "Connected to Tachikoma"
+    } else {
+        "Disconnected — review disabled"
+    })];
+    if let Some(health) = &app.health {
+        lines.push(Line::raw(format!(
+            "Jobs: {} ready, {} running",
+            health.ready_jobs, health.leased_jobs
+        )));
+        lines.push(Line::raw("Services across your queues:"));
+        for service in &health.services {
+            let heartbeat = if service.last_seen_ms == 0 {
+                "not connected".into()
+            } else {
+                format!("{}s ago", (now() - service.last_seen_ms).max(0) / 1000)
+            };
+            lines.push(Line::raw(display_text(&format!(
+                "\n{} — {heartbeat}\n{}",
+                service.id, service.detail
+            ))));
+        }
+        for queue in &health.queues {
+            lines.push(Line::raw(display_text(&format!(
+                "\n{} · {:?}\n{} pending, {} previous",
+                queue.manifest.id, queue.manifest.mode, queue.pending, queue.settled
+            ))));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(Text::from(lines))
+            .wrap(Wrap { trim: false })
+            .scroll((app.scroll, 0))
+            .block(panel(" Health ", app.focus == Focus::Details)),
+        area,
+    );
+}
+fn draw_input(frame: &mut Frame, area: Rect, input: &input::Input, title: String, focused: bool) {
+    let block = panel(title, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let (row, _) = input.row_column();
+    let column = Line::raw(
+        input.text[..input.cursor]
+            .rsplit('\n')
+            .next()
+            .unwrap_or_default(),
+    )
+    .width();
+    let vertical = row
+        .saturating_sub(inner.height.saturating_sub(1) as usize)
+        .min(u16::MAX as usize) as u16;
+    let horizontal = column
+        .saturating_sub(inner.width.saturating_sub(1) as usize)
+        .min(u16::MAX as usize) as u16;
+    frame.render_widget(
+        Paragraph::new(display_text(&input.text)).scroll((vertical, horizontal)),
+        inner,
+    );
+    if focused {
+        frame.set_cursor_position((
+            inner.x
+                + (column as u16)
+                    .saturating_sub(horizontal)
+                    .min(inner.width - 1),
+            inner.y + (row as u16).saturating_sub(vertical).min(inner.height - 1),
+        ));
+    }
+}
+fn draw_chat(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(chat) = &app.chat else {
+        return;
+    };
+    let composer_height = (chat.input.text.lines().count() as u16 + 2)
+        .clamp(5, 8)
+        .min(area.height.saturating_sub(4));
+    let areas =
+        Layout::vertical([Constraint::Min(4), Constraint::Length(composer_height)]).split(area);
+    let mut lines = vec![
+        Line::raw(display_text(&format!(
+            "{} · {}",
+            chat.conversation.queue, chat.conversation.status
+        ))),
+        Line::raw("Advisory investigation; decisions are separate."),
+    ];
+    for message in &chat.conversation.messages {
+        lines.push(Line::styled(
+            display_text(&format!("\n{} {}", message.role, message.model)),
+            Style::default().fg(Color::Cyan),
+        ));
+        for line in display_text(&message.content).lines() {
+            lines.push(Line::raw(line.to_owned()));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(Text::from(lines))
+            .wrap(Wrap { trim: false })
+            .scroll((app.scroll, 0))
+            .block(panel(
+                " Investigation ",
+                chat.focus == ChatFocus::Transcript,
+            )),
+        areas[0],
+    );
+    draw_input(
+        frame,
+        areas[1],
+        &chat.input,
+        format!(
+            " Message · {} ",
+            chat.model.as_deref().unwrap_or("worker default")
+        ),
+        chat.focus == ChatFocus::Composer && app.menu.is_none(),
+    );
+}
+fn hints(app: &App) -> &'static str {
+    match app.menu {
+        Some(Menu::Help) => return "Esc / ? / F1 Close help",
+        Some(Menu::Models { .. }) => return "↑↓ Select model · Enter Choose · Esc Cancel · ? Help",
+        Some(Menu::Actions(_)) => {
+            return "↑↓ Select · Enter Apply action · Esc Cancel · PgUp/PgDn Scope · ? Help";
+        }
+        None => {}
+    }
+    if let Some(chat) = &app.chat {
+        return if chat.focus == ChatFocus::Composer {
+            "←→ Cursor · Enter Send · Alt+Enter Newline · Tab Transcript · F2 Model · Esc Back · Ctrl-C Cancel turn"
+        } else {
+            "↑↓ Scroll · →/Enter Write · m/F2 Model · Tab Composer · Esc Back · Ctrl-C Cancel turn · ? Help"
+        };
+    }
+    match app.focus {
+        Focus::Queues => {
+            "↑↓ Choose queue · →/Enter Open · Tab Panes · 1/2/3 Views · ? Help · q Quit"
+        }
+        Focus::Requests => {
+            "↑↓ Select · ← Queues · →/Enter Details · y/n Once · s Scope · c Chat · / Filter · ? Help · q Quit"
+        }
+        Focus::Details if app.tab == 2 => {
+            "↑↓ Scroll · ← Queues · Tab Panes · 1/2/3 Views · r Refresh · ? Help · q Quit"
+        }
+        Focus::Details => {
+            "↑↓ Scroll · ← Requests · Enter Actions · y/n Once · s Scope · c Chat · / Filter · ? Help · q Quit"
+        }
+    }
+}
+fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
+    if app.searching {
+        let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).split(area);
+        draw_input(
+            frame,
+            rows[0],
+            &app.filter,
+            " Filter requests ".into(),
+            true,
+        );
+        frame.render_widget(
+            Paragraph::new("Enter Apply · Esc Clear · ←→ Cursor · Ctrl-U Clear"),
+            rows[1],
+        );
+        return;
+    }
+    let mut text = String::from(hints(app));
+    if !app.filter.text.is_empty() {
+        text.push_str(&format!("\nFilter: {}", display_text(&app.filter.text)));
+    }
+    if !app.notice.is_empty() {
+        text.push_str(&format!("\n{}", display_text(&app.notice)));
+    }
+    frame.render_widget(
+        Paragraph::new(text).wrap(Wrap { trim: false }).block(panel(
+            if app.connected {
                 " Connected "
             } else {
                 " Disconnected: actions disabled "
-            })),
-        vertical[2],
+            },
+            false,
+        )),
+        area,
     );
+}
+fn draw_menu(frame: &mut Frame, app: &App) {
+    let Some(menu) = &app.menu else {
+        return;
+    };
+    let full = frame.area();
+    let width = full.width.saturating_sub(8).min(90);
+    let height = full.height.saturating_sub(4).min(28);
+    let area = Rect::new(
+        full.x + (full.width - width) / 2,
+        full.y + (full.height - height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    let title = match menu {
+        Menu::Help => " Keyboard help ",
+        Menu::Models { .. } => " Model for the next message ",
+        Menu::Actions(m) if m.scopes => " Choose an exact permission scope ",
+        Menu::Actions(_) => " Choose an action ",
+    };
+    let block = panel(title, true);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    match menu {
+        Menu::Help => {
+            let help = "REVIEW\n←/→ or Tab/Shift+Tab: move between panes\n↑/↓ or j/k: navigate the focused pane\nEnter: open details, then actions\ny/n: allow once / deny once (a/d aliases)\ns: other permit scopes; Enter applies the displayed scope\nc or i: investigate the selected request\n/: filter requests · Esc: clear filter or go back\n1/2/3: Inbox / History / Health · r: refresh\nq or Ctrl-C: quit outside text editing\n\nTEXT INPUT\nArrow keys/Home/End edit text; Backspace/Delete remove text\nEnter sends chat; Alt+Enter inserts a newline\nTab switches transcript/composer; F2 opens model selection\nEsc leaves the composer, then returns to review\nCtrl-C cancels a turn; Ctrl-U clears a draft\nPasted text never triggers review shortcuts.\n\nEsc closes this help.";
+            let compact = "←→ / Tab: focus panes · ↑↓ / j/k: navigate\nEnter: details/actions · y/n: once\ns: scopes · c/i: investigate · /: filter\n1/2/3: Inbox/History/Health · r: refresh\nTyping: arrows/Home/End edit · Ctrl-U clear\nChat: Enter send · Alt+Enter newline\nTab: transcript/composer · F2: model\nCtrl-C: cancel turn · Esc: back\nq: quit outside editors · Esc: close help";
+            frame.render_widget(
+                Paragraph::new(if inner.height < 24 { compact } else { help })
+                    .wrap(Wrap { trim: false }),
+                inner,
+            );
+        }
+        Menu::Models { choices, index } => {
+            let items = choices
+                .iter()
+                .map(|m| ListItem::new(display_text(m.as_deref().unwrap_or("Worker default"))))
+                .collect::<Vec<_>>();
+            frame.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(selection(true))
+                    .highlight_symbol("▶ "),
+                inner,
+                &mut ListState::default().with_selected(Some(*index)),
+            );
+        }
+        Menu::Actions(menu) => {
+            let parts = Layout::vertical([
+                Constraint::Length((menu.actions.len() as u16).min(6) + 1),
+                Constraint::Min(3),
+                Constraint::Length(2),
+            ])
+            .split(inner);
+            let items = menu
+                .actions
+                .iter()
+                .map(|a| ListItem::new(display_text(&format!("{} · {:?}", a.label, a.effect))))
+                .collect::<Vec<_>>();
+            frame.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(selection(true))
+                    .highlight_symbol("▶ "),
+                parts[0],
+                &mut ListState::default().with_selected(Some(menu.index)),
+            );
+            let action = &menu.actions[menu.index];
+            let scope = display_text(&format!(
+                "{}\n\nExact scope:\n{}",
+                action.label,
+                serde_json::to_string_pretty(&action.scope).unwrap_or_default()
+            ));
+            frame.render_widget(
+                Paragraph::new(scope)
+                    .wrap(Wrap { trim: false })
+                    .scroll((menu.scroll, 0)),
+                parts[1],
+            );
+            frame.render_widget(
+                Paragraph::new(if app.connected {
+                    "Enter applies this action · Esc cancels"
+                } else {
+                    "Disconnected — cannot apply"
+                })
+                .wrap(Wrap { trim: false }),
+                parts[2],
+            );
+        }
+    }
+}
+fn draw(frame: &mut Frame, app: &App) {
+    if frame.area().width < 70 || frame.area().height < 18 {
+        frame.render_widget(
+            Paragraph::new("Tachikoma needs 70 × 18. Resize, or q to quit."),
+            frame.area(),
+        );
+        return;
+    }
+    let vertical = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(8),
+        Constraint::Length(5),
+    ])
+    .split(frame.area());
+    frame.render_widget(
+        Tabs::new(["1 Inbox", "2 History", "3 Health"])
+            .select(app.tab)
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        vertical[0],
+    );
+    if app.chat.is_some() || app.tab == 2 {
+        let columns =
+            Layout::horizontal([Constraint::Length(24), Constraint::Min(30)]).split(vertical[1]);
+        draw_queues(frame, columns[0], app);
+        if app.chat.is_some() {
+            draw_chat(frame, columns[1], app);
+        } else {
+            draw_health(frame, columns[1], app);
+        }
+    } else if frame.area().width >= 110 {
+        let columns = Layout::horizontal([
+            Constraint::Length(24),
+            Constraint::Percentage(32),
+            Constraint::Min(30),
+        ])
+        .split(vertical[1]);
+        draw_queues(frame, columns[0], app);
+        draw_requests(frame, columns[1], app);
+        draw_details(frame, columns[2], app);
+    } else {
+        let columns =
+            Layout::horizontal([Constraint::Length(22), Constraint::Min(30)]).split(vertical[1]);
+        draw_queues(frame, columns[0], app);
+        if app.focus == Focus::Details {
+            draw_details(frame, columns[1], app);
+        } else {
+            draw_requests(frame, columns[1], app);
+        }
+    }
+    draw_footer(frame, vertical[2], app);
+    draw_menu(frame, app);
 }
 struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = crossterm::execute!(std::io::stdout(), DisableBracketedPaste);
         ratatui::restore();
     }
 }
 pub async fn run(client: Client, queue: Option<String>) -> Result<()> {
     let mut app = App {
-        queue,
+        queue: queue.clone(),
+        queue_cursor: queue,
         ..Default::default()
     };
     app.refresh(&client).await;
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard;
+    crossterm::execute!(std::io::stdout(), EnableBracketedPaste)?;
     let mut keys = EventStream::new();
     let mut refresh = tokio::time::interval(Duration::from_secs(2));
     loop {
         app.sync();
         terminal.draw(|frame| draw(frame, &app))?;
         tokio::select! {
-            _=refresh.tick()=>{ app.refresh(&client).await; app.refresh_chat(&client).await; },
-            event=keys.next()=>{let Some(event)=event else{break};let Event::Key(key)=event? else{continue};
-                if key.kind!=KeyEventKind::Press{continue}
-                if app.chat.is_some() {
-                    match key.code {
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            if let Some(chat) = &app.chat && let Ok(chat) = client.cancel_conversation(&chat.request_id).await { app.chat = Some(chat); }
-                        },
-                        KeyCode::Esc => { app.chat = None; app.chat_input.clear(); app.scroll = 0; },
-                        KeyCode::Enter => app.send_chat(&client).await,
-                        KeyCode::F(2) => app.cycle_model(),
-                        KeyCode::PageDown => app.scroll = app.scroll.saturating_add(5),
-                        KeyCode::PageUp => app.scroll = app.scroll.saturating_sub(5),
-                        KeyCode::Backspace => { app.chat_input.pop(); },
-                        KeyCode::Char(c) if !c.is_control() && app.chat_input.len() + c.len_utf8() <= 2048 => app.chat_input.push(c),
-                        _ => {}
-                    }
-                    continue;
-                }
-                if key.code==KeyCode::Char('c')&&key.modifiers.contains(KeyModifiers::CONTROL){break}
-                if app.action_menu {
-                    match key.code {
-                        KeyCode::Esc => { app.action_menu = false; app.action_target = None; app.action_index = 0; },
-                        KeyCode::Up => app.action_index = app.action_index.saturating_sub(1),
-                        KeyCode::Down => app.action_index = app.action_index.saturating_add(1),
-                        KeyCode::Enter => {
-                            let action = app.selected().filter(|r| app.action_target.as_ref() == Some(&(r.id.clone(), r.revision)))
-                                .and_then(|r| r.actions.get(app.action_index % r.actions.len().max(1))).map(|a| a.id.clone());
-                            app.action_menu = false; app.action_target = None; app.action_index = 0;
-                            if let Some(action) = action { app.send_action(&client, action).await; }
-                            else { app.notice = "Request changed; explicitly select a current request.".into(); }
-                        },
-                        _ => {}
-                    }
-                    continue;
-                }
-                if app.searching{match key.code{KeyCode::Char('i')=>app.open_chat(&client).await,KeyCode::Enter=>app.searching=false,KeyCode::Esc=>{app.search.clear();app.searching=false},KeyCode::Backspace=>{app.search.pop();},KeyCode::Char(c)if !c.is_control()&&app.search.len()<256=>app.search.push(c),_=>{}}app.selected=None;continue}
-                match key.code{KeyCode::Enter=>{app.action_target=app.selected().map(|r|(r.id.clone(),r.revision));app.action_menu=app.action_target.is_some();app.action_index=0;app.scroll=0;},KeyCode::Char('q')|KeyCode::Esc=>break,KeyCode::Tab=>app.cycle(false),KeyCode::BackTab=>app.cycle(true),KeyCode::Char(c@'1'..='3')=>{app.tab=(c as u8-b'1')as usize;app.selected=None;app.selection_lost=false;app.scroll=0;},KeyCode::Up|KeyCode::Char('k')=>app.navigate(-1),KeyCode::Down|KeyCode::Char('j')=>app.navigate(1),KeyCode::PageDown=>app.scroll=app.scroll.saturating_add(5),KeyCode::PageUp=>app.scroll=app.scroll.saturating_sub(5),KeyCode::Char('/')=>app.searching=true,KeyCode::Char('t')=>app.action_index=app.action_index.saturating_add(1),KeyCode::Char('a')=>app.decide(&client,true).await,KeyCode::Char('d')=>app.decide(&client,false).await,KeyCode::Char('r')=>app.refresh(&client).await,_=>{}}
+            _=refresh.tick()=>{app.refresh(&client).await;app.refresh_chat(&client).await;},
+            event=keys.next()=>{
+                let Some(event)=event else{break;};
+                let command=match event? {Event::Key(key)=>app.key(key),Event::Paste(value)=>{app.paste(&value);None},_=>None};
+                if let Some(command)=command && app.execute(&client,command).await {break;}
             }
         }
     }
@@ -592,71 +676,55 @@ pub async fn run(client: Client, queue: Option<String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn empty_view_and_disconnected_controls_render() {
+    fn rendered(
+        app: &App,
+        width: u16,
+        height: u16,
+    ) -> ratatui::Terminal<ratatui::backend::TestBackend> {
         let mut terminal =
-            ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
-        terminal.draw(|frame| draw(frame, &App::default())).unwrap();
-        let output = terminal
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        terminal
+    }
+    fn text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> String {
+        terminal
             .backend()
             .buffer()
             .content()
             .iter()
             .map(|c| c.symbol())
-            .collect::<String>();
-        assert!(output.contains("No requests in this view"));
-        assert!(output.contains("actions disabled"));
-    }
-    fn review(id: &str) -> Review {
-        Review {
-            id: id.into(),
-            producer: "fixture".into(),
-            service_kind: "example".into(),
-            revision: 1,
-            manifest_revision: 1,
-            subject_digest: String::new(),
-            evidence_digest: String::new(),
-            created_at_ms: now(),
-            expires_at_ms: now() + 60_000,
-            mode: Mode::Manual,
-            state: ReviewState::Pending,
-            actions: vec![],
-            request: SubmitRequest {
-                queue: "fixture".into(),
-                producer_request_id: id.into(),
-                nonce: "fixture-nonce-123456".into(),
-                idempotency_key: id.into(),
-                schema_id: "fixture".into(),
-                subject: serde_json::json!({}),
-                evidence: serde_json::json!({}),
-                action_ids: vec![],
-                expires_at_ms: now() + 60_000,
-                summary: id.into(),
-            },
-            decision: None,
-            assessment: None,
-            receipt: None,
-        }
+            .collect()
     }
     #[test]
-    fn refresh_never_retargets_an_action_after_the_selected_request_settles() {
-        let mut app = App {
-            reviews: vec![review("first"), review("second")],
-            connected: true,
+    fn pane_focus_has_a_visible_border_and_contextual_controls() {
+        let app = App {
+            focus: Focus::Queues,
             ..Default::default()
         };
-        app.sync();
-        assert_eq!(app.selected.as_deref(), Some("first"));
-        app.action_menu = true;
-        app.action_target = Some(("first".into(), 1));
-        app.reviews.remove(0);
-        app.sync();
-        assert!(app.selected.is_none());
-        assert!(!app.action_menu);
-        assert!(app.action_target.is_none());
-        app.sync();
-        assert!(app.selected.is_none());
-        app.navigate(1);
-        assert_eq!(app.selected.as_deref(), Some("second"));
+        let terminal = rendered(&app, 140, 40);
+        assert_eq!(terminal.backend().buffer()[(0, 2)].fg, Color::Cyan);
+        assert_eq!(terminal.backend().buffer()[(24, 2)].fg, Color::DarkGray);
+        assert!(text(&terminal).contains("Choose queue"));
+        assert!(text(&terminal).contains("Disconnected: actions disabled"));
+        let app = App {
+            focus: Focus::Details,
+            ..Default::default()
+        };
+        let terminal = rendered(&app, 140, 40);
+        assert!(text(&terminal).contains("Enter Actions"));
+    }
+    #[test]
+    fn narrow_terminals_keep_the_focused_pane_and_help_is_discoverable() {
+        let app = App {
+            focus: Focus::Details,
+            menu: Some(Menu::Help),
+            ..Default::default()
+        };
+        let terminal = rendered(&app, 80, 30);
+        let output = text(&terminal);
+        assert!(output.contains("Keyboard help"));
+        assert!(output.contains("Esc"));
+        let terminal = rendered(&App::default(), 70, 18);
+        assert!(text(&terminal).contains("Nothing waiting"));
     }
 }

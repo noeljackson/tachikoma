@@ -48,12 +48,25 @@ tachikoma approval health
 tachikoma tui
 ```
 
-The TUI has Inbox, History and Health tabs. `Tab` changes queue; `/` searches;
-`Enter` shows exact actions; `a`/`d` allow or deny; `t` changes the permit scope.
-Use `i` to investigate, `F2` to choose an enabled model, `Enter` to send,
-`Ctrl-C` to cancel a turn and `Esc` to return. Decisions remain explicit actions.
-When the selected request settles elsewhere, select another request before
-acting again. Disconnected review controls are disabled.
+The TUI has Inbox, History and Health views (`1/2/3`). **Left/Right** or
+`Tab`/`Shift+Tab` moves focus between Queues, Requests and Details; Up/Down or
+`j/k` navigates the focused pane. Wide terminals show all three panes, while
+narrow terminals show the focused request or detail view beside the queues.
+
+`Enter` opens details, then the action menu. `y`/`n` allow or deny **once**
+(`a`/`d` remain aliases); `s` opens the other permit scopes with their exact
+values before applying one. `c` or `i` investigates; `/` filters; `?` or `F1`
+shows help. Highlighted borders and the footer show the current focus/controls.
+
+In chat, arrows/Home/End edit the draft, `Enter` sends, and `Alt+Enter` inserts
+a newline. `Tab` switches transcript/composer; `F2` opens the model picker
+(`m` also works in the transcript). `Esc` leaves the composer, then returns to
+review. `Ctrl-C` cancels a turn and `Ctrl-U` clears the draft. Letters and pasted
+text in editors never trigger review actions. Expired or settled selections are
+not automatically replaced with another actionable request.
+
+Use `make install-cli` to update the terminal client separately. Restart an
+already open TUI to load the new keyboard controls.
 
 Open <http://127.0.0.1:7447/approval/> directly; no web sign-in or credential entry
 is required on this local workstation. The daemon keeps its own limited reviewer

@@ -136,6 +136,57 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(replay.wait(timeout=8), 0)
         self.assertNotIn("simulated_effect", self.read_state(state))
         self.assertEqual(self.admin.call("GET", f"/requests/{review['id']}")["receipt"]["state"], "unknown")
+    def test_tui_pty_navigation_and_typing_never_settle_a_request(self):
+        import fcntl
+        import pty
+        import select
+        import struct
+        import termios
+        queue = self.example_queue()
+        queue['assessment'] = {'instructions':'Explain fixture facts','labels':{'unknown':'Unknown'},'subject_fields':['target'],'evidence_fields':[],'jev':False,'llm':True,'models':[]}
+        self.admin.call('POST','/queues',queue)
+        producer = self.enroll('terminal-producer','producer','example.review')
+        self.run_example(producer,self.root/'terminal-operation.json')
+        review = self.pending('example.review')
+        master,slave = pty.openpty()
+        fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',40,140,0,0))
+        environment = dict(os.environ,TERM='xterm-256color')
+        terminal = subprocess.Popen([str(ROOT/'target/debug/tachikoma'),'--rpc-socket',str(self.socket),'approval','--credential',str(self.root/'approval/admin.token'),'tui'],stdin=slave,stdout=slave,stderr=slave,env=environment,start_new_session=True)
+        self.children.append(terminal)
+        os.close(slave)
+        output = bytearray()
+        def drain(marker=None,timeout=3):
+            limit=time.monotonic()+timeout
+            start=len(output)
+            while time.monotonic()<limit:
+                if select.select([master],[],[],.05)[0]:
+                    try:data=os.read(master,65536)
+                    except OSError:break
+                    if not data:break
+                    output.extend(data)
+                    if marker and marker in output[start:]:return
+                elif marker is None:return
+            if marker:raise AssertionError('TUI did not render expected state: '+marker.decode())
+        try:
+            drain(b'Requests')
+            os.write(master,b'\x1b[C\x1b[D\x1b[D\x1b[B\x1b[C')
+            drain()
+            os.write(master,b'/');drain(b'Filter requests')
+            os.write(master,b'iynq\x1b[Dx\r');drain()
+            os.write(master,b'\x1b');time.sleep(.1);drain()
+            os.write(master,b'i');drain(b'Investigation')
+            os.write(master,b'ynq\x1b[Dx');drain()
+            os.write(master,b'\x1b');time.sleep(.1);drain()
+            os.write(master,b'\x1b');time.sleep(.1);drain()
+            os.write(master,b'?');drain(b'Keyboard help')
+            os.write(master,b'\x1b');time.sleep(.1);drain()
+            os.write(master,b'q')
+            self.assertEqual(terminal.wait(timeout=5),0)
+            self.assertEqual(self.admin.call('GET','/requests/'+review['id'])['state'],'pending')
+            self.assertEqual(self.admin.call('GET','/requests/'+review['id']+'/conversation')['messages'],[])
+        finally:
+            if terminal.poll() is None:terminal.terminate();terminal.wait(timeout=5)
+            os.close(master)
     def test_local_web_opens_without_credentials_and_requires_origin_and_csrf(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port)
         connection.request("GET", "/approval/", headers={"Host":"evil.example"})
