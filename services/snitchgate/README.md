@@ -12,11 +12,13 @@ action; starting the service does not change firewall configuration.
 
 ## Try it
 
-Requires Linux, Rust 1.88 or newer, `protoc`, and SQLite development libraries.
-On Arch, the corresponding packages are `rust`, `protobuf`, and `sqlite`.
+In this monorepo, run the commands below from the workspace root. Requires
+Linux, Rust 1.96 or newer and `protoc`; SQLite is bundled.
+The optional [Tachikoma connection](../../docs/approval-operations.md) centralizes
+review while preserving this broker’s local deadlines and temporary-rule limits.
 
 ```sh
-cargo run -- demo
+cargo run -p snitchgate -- demo
 ```
 
 The demo uses three in-memory requests. It makes no provider calls, opens no
@@ -31,7 +33,7 @@ expired request cannot turn a keypress into an approval for another request.
 ## Run the isolated service
 
 ```sh
-cargo build
+cargo build -p snitchgate
 ./target/debug/snitchgate serve
 ```
 

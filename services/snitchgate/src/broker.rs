@@ -52,6 +52,34 @@ impl Broker {
         }))
     }
 
+    /// Long-lived producer heartbeat; it carries no grant and never changes local deadlines.
+    pub async fn central_heartbeat(self: Arc<Self>) {
+        let Some(config) = &self.config.tachikoma else {
+            return;
+        };
+        loop {
+            if self.state.lock().expect("broker lock").closing {
+                return;
+            }
+            if let Ok(client) = crate::tachikoma::client(config) {
+                let valid = client.identity().await.is_ok_and(|id| {
+                    id.role == approval_protocol::Role::Producer
+                        && id.id == config.producer_id
+                        && id.service_kind == "snitchgate"
+                        && id.queues.contains(&config.queue)
+                });
+                if valid {
+                    let _ = client
+                        .heartbeat(
+                            "OpenSnitch broker available; original deadlines enforced locally",
+                        )
+                        .await;
+                }
+            }
+            tokio::time::sleep(StdDuration::from_secs(15)).await;
+        }
+    }
+
     /// Admission and timeout ownership live outside the cancellable RPC future.
     /// A cancelled gRPC client cannot leave an immortal inbox row behind.
     pub fn submit(self: &Arc<Self>, connection: Connection) -> Result<oneshot::Receiver<Verdict>> {
@@ -65,7 +93,9 @@ impl Broker {
             received,
             deadline: received + self.config.request_timeout_seconds,
             assessment: None,
-            classifier_status: if self.config.jev.enabled {
+            classifier_status: if self.config.tachikoma.as_ref().is_some_and(|c| !c.shadow) {
+                "queued centrally"
+            } else if self.config.jev.enabled {
                 "queued"
             } else {
                 "disabled"
@@ -101,7 +131,25 @@ impl Broker {
                 }
             }
         });
-        if self.config.jev.enabled {
+        if self.config.tachikoma.is_some() && !self.demo {
+            let broker = Arc::clone(self);
+            let central_id = id.clone();
+            let cancel = cancellation.clone();
+            tokio::spawn(async move {
+                if broker
+                    .central_review(central_id.clone(), cancel)
+                    .await
+                    .is_err()
+                {
+                    broker.classifier_status(
+                        &central_id,
+                        "Central approval unavailable; local deadline still applies",
+                        None,
+                    );
+                }
+            });
+        }
+        if self.config.jev.enabled && self.config.tachikoma.as_ref().is_none_or(|c| c.shadow) {
             let broker = Arc::clone(self);
             tokio::spawn(async move {
                 tokio::select! { _ = cancellation.cancelled() => {}, _ = broker.assess(id) => {} }
@@ -145,6 +193,10 @@ impl Broker {
     }
 
     pub fn decide(&self, id: &str, action: Action, duration: Duration) -> Result<()> {
+        ensure!(
+            self.demo || self.config.tachikoma.as_ref().is_none_or(|c| c.shadow),
+            "Tachikoma owns review; use its approval interface"
+        );
         if duration != Duration::Once {
             let state = self.state.lock().expect("broker lock");
             let entry = &state
@@ -176,7 +228,11 @@ impl Broker {
             pending,
             history: state.store.recent(200)?,
             health: state.health.clone(),
-            mode: if self.demo {
+            mode: if self.config.tachikoma.as_ref().is_some_and(|c| !c.shadow) && !self.demo {
+                "Tachikoma manual approval"
+            } else if self.config.tachikoma.is_some() && !self.demo {
+                "local authority / Tachikoma shadow"
+            } else if self.demo {
                 "demo"
             } else if self.config.automation.is_empty() {
                 "manual / classification only"
@@ -184,12 +240,16 @@ impl Broker {
                 "bounded automation"
             }
             .into(),
-            classifier_enabled: self.config.jev.enabled,
+            classifier_enabled: self.config.jev.enabled || self.config.tachikoma.is_some(),
             automation_scopes: self.config.automation.len(),
         })
     }
 
     pub fn remote_decide(&self, id: &str, action: Action, actor: &str) -> Result<()> {
+        ensure!(
+            self.demo || self.config.tachikoma.as_ref().is_none_or(|c| c.shadow),
+            "Tachikoma owns review; local Slack cannot decide this request"
+        );
         ensure!(
             !actor.is_empty()
                 && actor.len() <= 128
@@ -248,6 +308,91 @@ impl Broker {
             if let Some(assessment) = assessment {
                 pending.entry.assessment = Some(assessment);
             }
+        }
+    }
+
+    async fn central_review(
+        self: &Arc<Self>,
+        id: String,
+        cancellation: CancellationToken,
+    ) -> Result<()> {
+        use approval_protocol::{EnforcementReceipt, EnforcementState, Mode, ReviewState};
+        let config = self
+            .config
+            .tachikoma
+            .as_ref()
+            .ok_or_else(|| anyhow!("central config missing"))?;
+        let client = crate::tachikoma::client(config)?;
+        let queue = client
+            .queues()
+            .await?
+            .into_iter()
+            .find(|q| q.manifest.id == config.queue)
+            .ok_or_else(|| anyhow!("central queue is unavailable"))?;
+        ensure!(
+            queue.manifest.service_kind == "snitchgate"
+                && queue.manifest.schema_id == "network.connect.v1",
+            "incompatible central network queue"
+        );
+        ensure!(
+            if config.shadow {
+                queue.manifest.mode == Mode::Shadow
+            } else {
+                queue.manifest.mode == Mode::Manual
+            },
+            "central queue mode does not match the configured authority"
+        );
+        let entry = self.entry(&id)?;
+        if cancellation.is_cancelled() {
+            return Ok(());
+        }
+        let submission = crate::tachikoma::request(config, &entry);
+        let mut review = client.submit(&submission).await?;
+        let _ = client
+            .heartbeat("OpenSnitch broker connected to approval queue")
+            .await;
+        loop {
+            if let Some(assessment) = &review.assessment {
+                self.classifier_status(
+                    &id,
+                    if config.shadow {
+                        "central shadow assessment"
+                    } else {
+                        "centrally assessed; awaiting review"
+                    },
+                    Some(crate::tachikoma::assessment(assessment)),
+                );
+            }
+            if review.state != ReviewState::Pending {
+                if config.shadow {
+                    return Ok(());
+                }
+                let verdict =
+                    crate::tachikoma::verdict(config, &submission, &review, &entry.connection)?;
+                let decision = review
+                    .decision
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("central decision missing"))?;
+                let applied = self.finish(&id, verdict).is_ok();
+                let _ = client.receipt(&review.id, &EnforcementReceipt {
+                    decision_id: decision.id.clone(),
+                    state: if applied { EnforcementState::Unknown } else { EnforcementState::NotEnforced },
+                    reason: if applied { "Broker audited and returned the temporary rule; daemon/kernel acknowledgement is unavailable" } else { "Local request already expired, settled, or could not be audited" }.into(),
+                    observed_at_ms: i64::try_from(now()).unwrap_or(i64::MAX/1000).saturating_mul(1000),
+                }).await;
+                return Ok(());
+            }
+            tokio::select! {
+                _ = cancellation.cancelled() => { let _ = client.cancel(&review.id).await; return Ok(()); }
+                _ = tokio::time::sleep(StdDuration::from_millis(250)) => {}
+            }
+            review = tokio::select! {
+                _ = cancellation.cancelled() => { let _ = client.cancel(&review.id).await; return Ok(()); }
+                response = client.get(&review.id) => match response {
+                    Ok(current) => current,
+                    Err(_) => { self.classifier_status(&id, "Central connection interrupted; waiting under the original deadline", None); continue; }
+                }
+            };
         }
     }
 

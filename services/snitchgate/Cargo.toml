@@ -7,6 +7,8 @@ description = "A terminal control room and bounded decision broker for OpenSnitc
 publish = false
 
 [dependencies]
+approval-protocol = { path = "../../crates/approval-protocol" }
+approval-client = { path = "../../crates/approval-client" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 crossterm = { version = "0.29", features = ["event-stream"] }
@@ -15,7 +17,7 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 prost = "0.14"
 ratatui = "0.30"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-rusqlite = "0.37"
+rusqlite = { version = "0.38", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
@@ -34,6 +36,5 @@ tonic-prost-build = "0.14"
 [dev-dependencies]
 tempfile = "3"
 
-[profile.release]
-lto = "thin"
-strip = true
+[package.metadata.tachikoma]
+boundary = "domain:snitchgate"

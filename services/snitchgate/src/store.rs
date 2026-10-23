@@ -25,7 +25,7 @@ impl Store {
             "INSERT INTO decisions(id, entry) VALUES (?1, ?2)",
             params![entry.id, serde_json::to_string(entry)?],
         )?;
-        tx.execute("DELETE FROM decisions WHERE seq NOT IN (SELECT seq FROM decisions ORDER BY seq DESC LIMIT ?1)", [self.limit])?;
+        tx.execute("DELETE FROM decisions WHERE seq NOT IN (SELECT seq FROM decisions ORDER BY seq DESC LIMIT ?1)", [i64::try_from(self.limit)?])?;
         tx.commit()?;
         Ok(())
     }
@@ -33,7 +33,7 @@ impl Store {
         let mut statement = self
             .db
             .prepare("SELECT entry FROM decisions ORDER BY seq DESC LIMIT ?1")?;
-        let values = statement.query_map([limit], |row| row.get::<_, String>(0))?;
+        let values = statement.query_map([i64::try_from(limit)?], |row| row.get::<_, String>(0))?;
         values
             .map(|value| Ok(serde_json::from_str(&value?)?))
             .collect()

@@ -17,3 +17,5 @@ pub mod tui;
 pub mod protocol {
     tonic::include_proto!("protocol");
 }
+
+pub mod tachikoma;

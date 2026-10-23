@@ -1,7 +1,13 @@
+[workspace]
+resolver = "3"
+members = [".", "services/snitchgate", "crates/approval-protocol", "crates/approval-client", "crates/control-plane", "apps/tui", "workers/assessment", "workers/review-slack", "services/kubernetesgate", "apps/web", "apps/daemon"]
+default-members = ["."]
+
 [package]
 name = "tachikoma"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.96"
 license = "MIT"
 description = "Local-first policy proposal control plane"
 repository = "https://github.com/noeljackson/tachikoma"
@@ -15,7 +21,7 @@ path = "src/lib.rs"
 doctest = false
 
 [[bin]]
-name = "tachikomad"
+name = "tachikoma-legacyd"
 path = "src/main.rs"
 
 [[bin]]
@@ -23,6 +29,9 @@ name = "tachikoma"
 path = "src/cli.rs"
 
 [dependencies]
+approval-protocol = { path = "crates/approval-protocol" }
+approval-client = { path = "crates/approval-client" }
+approval-tui = { path = "apps/tui" }
 anyhow = "1.0.100"
 # The dashboard uses default template paths, so avoid the optional config
 # parser and its unmaintained basic-toml dependency.
@@ -61,3 +70,10 @@ tower = { version = "0.5.3", features = ["util"] }
 
 [build-dependencies]
 connectrpc-build = "0.8.0"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[package.metadata.tachikoma]
+boundary = "control"

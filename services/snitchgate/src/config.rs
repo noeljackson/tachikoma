@@ -17,6 +17,7 @@ pub struct Config {
     pub ollama: OllamaConfig,
     pub automation: Vec<Scope>,
     pub approvals: ApprovalConfig,
+    pub tachikoma: Option<TachikomaConfig>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -29,8 +30,20 @@ impl Default for Config {
             ollama: OllamaConfig::default(),
             automation: vec![],
             approvals: ApprovalConfig::default(),
+            tachikoma: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TachikomaConfig {
+    pub socket: PathBuf,
+    pub producer_id: String,
+    pub queue: String,
+    pub credential_env: String,
+    #[serde(default)]
+    pub shadow: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -139,6 +152,26 @@ impl Config {
         Ok(config)
     }
     pub fn validate(&self) -> Result<()> {
+        if let Some(remote) = &self.tachikoma {
+            ensure!(
+                remote.socket.is_absolute()
+                    && !remote.producer_id.is_empty()
+                    && !remote.queue.is_empty(),
+                "Tachikoma requires an absolute socket, producer identity and queue"
+            );
+            ensure!(
+                !remote.credential_env.is_empty()
+                    && remote
+                        .credential_env
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+                "invalid Tachikoma credential environment name"
+            );
+            ensure!(
+                remote.shadow || self.automation.is_empty(),
+                "local automation must be disabled when Tachikoma owns decisions"
+            );
+        }
         ensure!(
             (0.0..=1.0).contains(&self.approvals.review_below_confidence),
             "invalid review threshold"

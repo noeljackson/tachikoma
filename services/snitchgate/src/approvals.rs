@@ -386,7 +386,7 @@ impl<A: ApprovalAdapter> Inbox<A> {
             event_micros > 0 && event_micros <= i64::MAX as u64,
             "invalid registration timestamp"
         );
-        let changed = self.db.execute("INSERT INTO routes VALUES(?1,?2,?3) ON CONFLICT(namespace) DO UPDATE SET channel=excluded.channel,event_micros=excluded.event_micros WHERE excluded.event_micros>routes.event_micros", params![self.namespace, channel, event_micros])?;
+        let changed = self.db.execute("INSERT INTO routes VALUES(?1,?2,?3) ON CONFLICT(namespace) DO UPDATE SET channel=excluded.channel,event_micros=excluded.event_micros WHERE excluded.event_micros>routes.event_micros", params![self.namespace, channel, i64::try_from(event_micros)?])?;
         Ok(changed == 1)
     }
     pub async fn reply(&mut self, reply: Reply) -> Result<bool> {
@@ -476,7 +476,10 @@ impl<A: ApprovalAdapter> Inbox<A> {
         };
         let count: u32 = self.db.query_row(
             "SELECT COUNT(*) FROM deliveries WHERE namespace=?1 AND created>?2",
-            params![self.namespace, model::now().saturating_sub(60)],
+            params![
+                self.namespace,
+                i64::try_from(model::now().saturating_sub(60))?
+            ],
             |r| r.get(0),
         )?;
         if count >= 10 {
@@ -501,7 +504,7 @@ impl<A: ApprovalAdapter> Inbox<A> {
                     channel,
                     nonce,
                     serde_json::to_string(&review)?,
-                    model::now()
+                    i64::try_from(model::now())?
                 ],
             )?;
             if claimed == 0 {

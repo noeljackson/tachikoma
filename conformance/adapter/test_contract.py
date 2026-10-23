@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""Run inside the Docker test stage. All services, providers and credentials are fixtures."""
+import http.client
+import importlib.util
+import json
+import os
+from pathlib import Path
+import socket
+import socketserver
+import subprocess
+import tempfile
+import threading
+import time
+import unittest
+import urllib.parse
+
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("external", ROOT / "examples/external-adapter/service.py")
+external = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(external)
+
+class Fixture:
+    def __init__(self, path, response):
+        self.path = path
+        self.requests = []
+        fixture = self
+        from http.server import BaseHTTPRequestHandler
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                fixture.requests.append(json.loads(data))
+                body = json.dumps(response).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, *args):
+                pass
+        self.server = socketserver.UnixStreamServer(str(path), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+
+def until(predicate, timeout=12):
+    limit = time.monotonic() + timeout
+    while time.monotonic() < limit:
+        result = predicate()
+        if result:
+            return result
+        time.sleep(0.05)
+    raise AssertionError("fixture timed out")
+
+class ContractTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.socket = self.root / "api.sock"
+        self.children = []
+        self.fixtures = []
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        self.port = listener.getsockname()[1]
+        listener.close()
+        self.start_daemon()
+        self.admin = external.API(self.socket, self.root / "approval/admin.token")
+    def start_daemon(self):
+        self.daemon = self.child([str(ROOT / "target/release/tachikomad"), "--database", str(self.root / "legacy.sqlite3"), "--rpc-socket", str(self.socket), "--listen", f"127.0.0.1:{self.port}"])
+        until(lambda: self.socket.exists() and (self.root / "approval/admin.token").exists())
+    def child(self, command, env=None):
+        child = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.children.append(child)
+        return child
+    def tearDown(self):
+        for child in reversed(self.children):
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+            if child.stdout:
+                child.stdout.close()
+            if child.stderr:
+                child.stderr.close()
+        for fixture in self.fixtures:
+            fixture.close()
+        self.directory.cleanup()
+    def enroll(self, name, role, queue, kind="example"):
+        value = self.admin.call("POST", "/principals", {"id": name, "role": role, "queues": [queue], "service_kind": kind, "realm": "", "actors": []})
+        path = self.root / (name + ".token")
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as file:
+            file.write(value["credential"])
+        return path
+    def example_queue(self):
+        return {"id": "example.review", "title": "External fixture", "service_kind": "example", "schema_id": "example.subject.v1", "subject_shape": {"type": "object", "fields": {"target": {"type": "string", "max_len": 128}}, "required": ["target"]}, "actions": [{"id": "allow-once", "label": "Allow once", "effect": "permit", "scope": {"uses": 1}}, {"id": "deny-once", "label": "Deny once", "effect": "block", "scope": {"uses": 1}}], "max_pending": 16, "deadline_cap_ms": 60_000}
+    def read_state(self, path):
+        try:
+            return json.loads(path.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+    def run_example(self, credential, state, extra=()):
+        return self.child(["python3", str(ROOT / "examples/external-adapter/service.py"), "--socket", str(self.socket), "--credential", str(credential), "--state", str(state), *extra])
+    def pending(self, queue):
+        return until(lambda: next((r for r in self.admin.call("GET", "/requests")["reviews"] if r["request"]["queue"] == queue), None))
+    def test_external_service_runs_without_workspace_imports_and_consumes_once(self):
+        self.admin.call("POST", "/queues", self.example_queue())
+        token = self.enroll("external", "producer", "example.review")
+        state = self.root / "operation.json"
+        child = self.run_example(token, state)
+        review = self.pending("example.review")
+        self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision": 1, "action_id": "allow-once"})
+        self.assertEqual(child.wait(timeout=8), 0)
+        first = self.read_state(state)
+        self.assertIn("simulated_effect", first)
+        replay = self.run_example(token, state)
+        self.assertEqual(replay.wait(timeout=8), 0)
+        self.assertEqual(first, self.read_state(state))
+        receipt = self.admin.call("GET", f"/requests/{review['id']}")["receipt"]
+        self.assertEqual(receipt["state"], "enforced")
+    def test_restart_after_consumption_reports_unknown_without_repeating_effect(self):
+        self.admin.call("POST", "/queues", self.example_queue())
+        token = self.enroll("external", "producer", "example.review")
+        state = self.root / "operation.json"
+        child = self.run_example(token, state, ["--crash-after-consume"])
+        review = self.pending("example.review")
+        self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision": 1, "action_id": "allow-once"})
+        self.assertEqual(child.wait(timeout=8), 17)
+        self.assertNotIn("simulated_effect", self.read_state(state))
+        replay = self.run_example(token, state)
+        self.assertEqual(replay.wait(timeout=8), 0)
+        self.assertNotIn("simulated_effect", self.read_state(state))
+        self.assertEqual(self.admin.call("GET", f"/requests/{review['id']}")["receipt"]["state"], "unknown")
+    def test_web_requires_login_origin_and_csrf(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        connection.request("GET", "/approval/", headers={"Host": "evil.example"})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 403)
+        response.read()
+        connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        secret = (self.root / "approval/admin.token").read_text()
+        encoded = urllib.parse.urlencode({"credential": secret})
+        connection.request("POST", "/approval/login", encoded, {"Content-Type": "application/x-www-form-urlencoded"})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 403)
+        response.read()
+        connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        connection.request("POST", "/approval/login", encoded, {"Content-Type": "application/x-www-form-urlencoded", "Origin": f"http://127.0.0.1:{self.port}"})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 303)
+        cookie = response.getheader("Set-Cookie")
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        response.read()
+        connection.request("GET", "/approval/", headers={"Cookie": cookie.split(";")[0]})
+        response = connection.getresponse()
+        html = response.read().decode()
+        self.assertEqual(response.status, 200)
+        self.assertNotIn(secret, html)
+        self.assertIn("Signed in as", html)
+        connection.request("POST", "/approval/requests/nonexistent/decide", urllib.parse.urlencode({"csrf":"wrong","revision":1,"action_id":"allow-once"}), {"Cookie":cookie.split(";")[0],"Origin":f"http://127.0.0.1:{self.port}","Content-Type":"application/x-www-form-urlencoded"})
+        response = connection.getresponse()
+        self.assertEqual(response.status,403)
+        response.read()
+        connection.close()
+    def test_legacy_import_preserves_source_and_never_grants_authority(self):
+        import sqlite3
+        import hashlib
+        source = self.root / "original.sqlite3"
+        with sqlite3.connect(source) as db:
+            db.execute("CREATE TABLE proposals(id,adapter,action,state,risk,created_at,updated_at)")
+            db.execute("INSERT INTO proposals VALUES('old','opensnitch','allow','approved','low','1','2')")
+        before = hashlib.sha256(source.read_bytes()).hexdigest()
+        command = [str(ROOT / "target/debug/tachikoma"), "--rpc-socket", str(self.socket), "approval", "--credential", str(self.root / "approval/admin.token"), "import-legacy", str(source)]
+        for _ in range(2):
+            result = subprocess.run(command, capture_output=True, timeout=6)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+        history = self.admin.call("GET", "/requests?state=history")["reviews"]
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["state"], "observed")
+        self.assertFalse(history[0]["decision"]["authoritative"])
+        self.assertEqual(history[0]["request"]["subject"]["legacy_state"], "approved")
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), before)
+    def test_historical_conversation_uses_worker_and_cannot_change_decision(self):
+        queue = self.example_queue()
+        queue["assessment"] = {"instructions":"Explain the facts", "labels":{"unknown":"Unknown"}, "subject_fields":["target"], "evidence_fields":[], "jev":False, "llm":True, "models":["fixture"]}
+        self.admin.call("POST", "/queues", queue)
+        token = self.enroll("external", "producer", "example.review")
+        worker = self.enroll("assessment", "worker", "example.review", "")
+        child = self.run_example(token, self.root / "operation.json")
+        review = self.pending("example.review")
+        self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision":1,"action_id":"deny-once"})
+        self.assertEqual(child.wait(timeout=8), 0)
+        input = {"message":"What do we know?", "model":"fixture", "idempotency_key":"chat-first"}
+        chat = self.admin.call("POST", f"/requests/{review['id']}/conversation", input)
+        self.assertEqual(chat["status"], "running")
+        self.assertEqual(len(self.admin.call("POST", f"/requests/{review['id']}/conversation", input)["messages"]), 1)
+        llm = Fixture(self.root / "llm.sock", {"model":"fixture","done":True,"message":{"content":json.dumps({"explanation":"Only the supplied target is known."})}})
+        self.fixtures.append(llm)
+        completed = subprocess.run([str(ROOT / "target/debug/tachikoma-assessment-worker"), "--socket", str(self.socket), "--credential", str(worker), "--llm-endpoint", "http://fixture.invalid/chat", "--llm-socket", str(llm.path), "--allow-model", "fixture", "--once"], capture_output=True, timeout=6)
+        self.assertEqual(completed.returncode, 0)
+        chat = self.admin.call("GET", f"/requests/{review['id']}/conversation")
+        self.assertEqual(chat["status"], "idle")
+        self.assertEqual(chat["messages"][-1]["content"], "Only the supplied target is known.")
+        self.assertEqual(self.admin.call("GET", f"/requests/{review['id']}")["state"], "denied")
+        self.assertEqual(llm.requests[0]["model"], "fixture")
+    def start_broker(self, token, timeout=5):
+        config = self.root / "broker.toml"
+        config.write_text(f"request_timeout_seconds={timeout}\n[tachikoma]\nsocket={json.dumps(str(self.socket))}\nproducer_id='network'\nqueue='network.egress'\ncredential_env='TACHIKOMA_API_TOKEN'\n")
+        environment = os.environ.copy()
+        environment["TACHIKOMA_API_TOKEN_FILE"] = str(token)
+        runtime = self.root / "broker-runtime"
+        child = self.child([str(ROOT / "target/debug/snitchgate"), "serve", "--runtime-dir", str(runtime), "--state-dir", str(self.root / "broker-state"), "--config", str(config)], env=environment)
+        until(lambda: (runtime / "opensnitch.sock").exists())
+        return child, runtime
+    def network_queue(self):
+        queue = json.loads((ROOT / "contrib/adapters/snitchgate.queue.json").read_text())
+        return queue
+    def test_network_bridge_classifies_and_returns_a_scoped_decision_once(self):
+        self.admin.call("POST", "/queues", self.network_queue())
+        token = self.enroll("network", "producer", "network.egress", "snitchgate")
+        worker = self.enroll("assessment", "worker", "network.egress", "")
+        _, runtime = self.start_broker(token, timeout=8)
+        mock = self.child([str(ROOT / "target/debug/snitchgate"), "mock", "--socket", str(runtime / "opensnitch.sock")])
+        review = self.pending("network.egress")
+        jev = Fixture(self.root / "jev.sock", {"model":"jev-fixture","answers":{"category":{"type":"choice","choice":"development","confidence":0.97}}})
+        llm = Fixture(self.root / "llm.sock", {"model":"qwen-fixture","done":True,"done_reason":"stop","message":{"content":json.dumps({"explanation":"Fixture facts are insufficient to prove intent."})}})
+        self.fixtures.extend([jev, llm])
+        key = self.root / "provider.token"
+        descriptor = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as file:
+            file.write("fixture-provider-key")
+        completed = subprocess.run([str(ROOT / "target/debug/tachikoma-assessment-worker"), "--socket", str(self.socket), "--credential", str(worker), "--jev-endpoint", "http://fixture.invalid/jev", "--jev-socket", str(jev.path), "--jev-key-file", str(key), "--llm-endpoint", "http://fixture.invalid/chat", "--llm-socket", str(llm.path), "--once"], capture_output=True, timeout=6)
+        self.assertEqual(completed.returncode, 0)
+        classified = self.admin.call("GET", f"/requests/{review['id']}")
+        self.assertEqual(classified["assessment"]["category"], "development")
+        self.assertEqual(classified["assessment"]["llm_model"], "qwen-fixture")
+        self.assertEqual(classified["state"], "pending")
+        self.assertNotIn("url_hints", json.dumps(jev.requests))
+        self.assertNotIn("resource_details", json.dumps(llm.requests))
+        self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision":1,"action_id":"allow-once"})
+        self.assertEqual(mock.wait(timeout=5), 0)
+        self.assertIn("allow / once", mock.stdout.read().decode())
+        settled = until(lambda: self.admin.call("GET", f"/requests/{review['id']}") if self.admin.call("GET", f"/requests/{review['id']}").get("receipt") else None)
+        self.assertEqual(settled["receipt"]["state"], "unknown")
+    def test_network_bridge_rejects_broadened_scope_and_times_out_denied(self):
+        queue = self.network_queue()
+        queue["assessment"] = None
+        queue["actions"][0]["scope"] = {"duration":"always"}
+        self.admin.call("POST", "/queues", queue)
+        token = self.enroll("network", "producer", "network.egress", "snitchgate")
+        _, runtime = self.start_broker(token, timeout=2)
+        mock = self.child([str(ROOT / "target/debug/snitchgate"), "mock", "--socket", str(runtime / "opensnitch.sock")])
+        review = self.pending("network.egress")
+        self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision":1,"action_id":"allow-once"})
+        self.assertEqual(mock.wait(timeout=5), 0)
+        self.assertIn("deny / once", mock.stdout.read().decode())
+    def test_network_bridge_keeps_local_deadline_during_control_plane_outage(self):
+        queue = self.network_queue()
+        queue["assessment"] = None
+        self.admin.call("POST", "/queues", queue)
+        token = self.enroll("network", "producer", "network.egress", "snitchgate")
+        _, runtime = self.start_broker(token, timeout=2)
+        mock = self.child([str(ROOT / "target/debug/snitchgate"), "mock", "--socket", str(runtime / "opensnitch.sock")])
+        self.pending("network.egress")
+        self.daemon.terminate()
+        self.daemon.wait(timeout=5)
+        self.assertEqual(mock.wait(timeout=5), 0)
+        self.assertIn("deny / once", mock.stdout.read().decode())
+
+    def test_kubernetes_producer_is_observation_only(self):
+        binary = ROOT / "target/debug/kubernetesgate"
+        result = subprocess.run([str(binary), "manifest"], check=True, capture_output=True)
+        self.admin.call("POST", "/queues", json.loads(result.stdout))
+        token = self.enroll("cluster", "producer", "kubernetes.observe", "kubernetesgate")
+        result = subprocess.run([str(binary), "--socket", str(self.socket), "--credential", str(token), "suggest", "--context", "fixture", "--", "get", "pods"], capture_output=True)
+        self.assertEqual(result.returncode, 0)
+        review = json.loads(result.stdout)
+        self.assertTrue(review["request"]["subject"]["observation_only"])
+        self.assertEqual(review["actions"][0]["effect"], "observe")
+        self.assertFalse(any(a["effect"] == "permit" for a in review["actions"]))
+
+if __name__ == "__main__":
+    unittest.main()

@@ -110,7 +110,7 @@ impl ApprovalSource for ObservationStore {
         Ok(reviews)
     }
     async fn decide(&mut self, id: &str, action: Action, actor: &str) -> Result<()> {
-        let changed = self.db.execute("UPDATE observations SET action=?1,actor=?2,answered_at=?3 WHERE id=?4 AND action IS NULL AND review=1 AND CAST(json_extract(entry,'$.deadline') AS INTEGER)>?3", params![action.as_str(), actor, model::now(), id])?;
+        let changed = self.db.execute("UPDATE observations SET action=?1,actor=?2,answered_at=?3 WHERE id=?4 AND action IS NULL AND review=1 AND CAST(json_extract(entry,'$.deadline') AS INTEGER)>?3", params![action.as_str(), actor, i64::try_from(model::now())?, id])?;
         ensure!(changed == 1, "observation expired or already answered");
         Ok(())
     }

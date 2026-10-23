@@ -130,6 +130,7 @@ async fn serve(
         control_path.display(),
         broker.snapshot()?.mode
     );
+    let heartbeat_task = tokio::spawn(Arc::clone(&broker).central_heartbeat());
     let mut grpc_task = tokio::spawn(server::serve(grpc, Arc::clone(&broker)));
     let mut ipc_task = tokio::spawn(ipc::serve(control, Arc::clone(&broker)));
     let abstract_broker = broker.clone();
@@ -150,6 +151,7 @@ async fn serve(
     broker.shutdown();
     // Give pending AskRule responses a chance to flush before closing transport.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    heartbeat_task.abort();
     grpc_task.abort();
     ipc_task.abort();
     abstract_task.abort();
