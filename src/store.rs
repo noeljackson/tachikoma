@@ -270,13 +270,22 @@ impl Store {
     }
 
     pub fn list(&self, state: Option<&str>) -> Result<Vec<ProposalRecord>> {
+        self.list_for_adapter(state, None)
+    }
+
+    pub fn list_for_adapter(
+        &self,
+        state: Option<&str>,
+        adapter: Option<&str>,
+    ) -> Result<Vec<ProposalRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT id, adapter, action, state, risk, evidence_json, preview, rollback, idempotency_key, expires_at_unix, created_at, updated_at
              FROM proposals
              WHERE (?1 IS NULL OR state = ?1)
+               AND (?2 IS NULL OR adapter = ?2)
              ORDER BY updated_at DESC",
         )?;
-        let rows = statement.query_map([state], |row| {
+        let rows = statement.query_map(rusqlite::params![state, adapter], |row| {
             Ok(ProposalRecord {
                 id: row.get(0)?,
                 adapter: row.get(1)?,
@@ -658,6 +667,52 @@ mod tests {
             store
                 .list(Some("approved"))
                 .expect("list approved")
+                .is_empty()
+        );
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn adapter_filter_is_exact_and_combines_with_state() {
+        let (store, path) = test_store();
+        store
+            .create(&proposal())
+            .expect("create opensnitch proposal");
+        let mut other = proposal();
+        other.id = "registry-proposal".into();
+        other.idempotency_key = "registry-request".into();
+        other.adapter = "registrygate".into();
+        store.create(&other).expect("create registry proposal");
+        assert_eq!(store.list(None).unwrap().len(), 2);
+        let filtered = store.list_for_adapter(None, Some("registrygate")).unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, other.id);
+        assert_eq!(
+            store
+                .list_for_adapter(Some("awaiting_review"), Some("registrygate"))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            store
+                .list_for_adapter(Some("approved"), Some("registrygate"))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            store
+                .list_for_adapter(None, Some("registry"))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            store
+                .list_for_adapter(None, Some("' OR 1=1 --"))
+                .unwrap()
                 .is_empty()
         );
         drop(store);

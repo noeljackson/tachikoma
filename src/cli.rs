@@ -36,9 +36,17 @@ enum Command {
     /// Show daemon and adapter status.
     Status,
     /// List proposals in the durable queue.
-    Queue,
-    /// Open a local terminal UI snapshot of the queue; q or Escape closes it.
-    Tui,
+    Queue {
+        /// Show proposals from this adapter only.
+        #[arg(long)]
+        adapter: Option<String>,
+    },
+    /// Open the terminal UI with service queues and proposal investigations.
+    Tui {
+        /// Start in this adapter's queue (Tab switches queues).
+        #[arg(long)]
+        adapter: Option<String>,
+    },
     /// List compiled and custom models with local authentication status.
     Models,
     /// Open or resume the primary chat investigation for a proposal.
@@ -184,9 +192,12 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Queue => {
+        Command::Queue { adapter } => {
             let response = ProposalServiceClient::new(transport(), config.clone())
-                .list_proposals(ListProposalsRequest::default())
+                .list_proposals(ListProposalsRequest {
+                    adapter: adapter.unwrap_or_default(),
+                    ..Default::default()
+                })
                 .await?
                 .into_owned();
             for proposal in response.proposals {
@@ -196,7 +207,7 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Tui => {
+        Command::Tui { adapter } => {
             let response = ProposalServiceClient::new(transport(), config.clone())
                 .list_proposals(ListProposalsRequest::default())
                 .await?
@@ -206,18 +217,41 @@ async fn main() -> Result<()> {
                 .await?
                 .into_owned()
                 .models;
-            let mut app = tachikoma::tui::App::new(response.proposals, models);
+            let status = StatusServiceClient::new(transport(), config.clone())
+                .get_status(GetStatusRequest::default())
+                .await?
+                .into_owned();
+            let mut app =
+                tachikoma::tui::App::new(response.proposals, models, status.adapters, adapter);
+            let mut session = tachikoma::tui::Session::new()?;
             loop {
-                match tachikoma::tui::run(&mut app)? {
+                match session.run(&mut app)? {
                     tachikoma::tui::Action::Quit => break,
+                    tachikoma::tui::Action::RefreshQueue => {
+                        let response = ProposalServiceClient::new(transport(), config.clone())
+                            .list_proposals(ListProposalsRequest::default())
+                            .await?
+                            .into_owned();
+                        let status = StatusServiceClient::new(transport(), config.clone())
+                            .get_status(GetStatusRequest::default())
+                            .await?
+                            .into_owned();
+                        app.update_queue(response.proposals, status.adapters);
+                    }
                     tachikoma::tui::Action::OpenProposal(proposal_id) => {
                         let response = InvestigationServiceClient::new(transport(), config.clone())
                             .open_investigation(OpenInvestigationRequest {
                                 proposal_id,
                                 ..Default::default()
                             })
-                            .await?
-                            .into_owned();
+                            .await;
+                        let response = match response {
+                            Ok(response) => response.into_owned(),
+                            Err(error) => {
+                                app.notice = Some(error.to_string());
+                                continue;
+                            }
+                        };
                         app.set_investigation(
                             response.investigation.into_option().ok_or_else(|| {
                                 anyhow::anyhow!("server returned no investigation")
