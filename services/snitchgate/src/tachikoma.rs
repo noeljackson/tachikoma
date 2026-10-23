@@ -30,7 +30,7 @@ pub fn request(config: &TachikomaConfig, entry: &Entry) -> SubmitRequest {
         idempotency_key: entry.id.clone(),
         schema_id: "network.connect.v1".into(),
         subject: json!({"process":c.process,"pid":c.pid,"uid":c.uid,"protocol":c.protocol,"ip":c.ip.to_string(),"host":c.host,"port":c.port}),
-        evidence: json!({"resource_details":c.resource_details(),"url_hints":c.url_hints,"attribution":"Captured process path and hostname are unverified claims. Approval covers the network connection, not an HTTP file."}),
+        evidence: json!({"resource_details":c.resource_details(),"url_hints":c.url_hints,"process_context":c.context,"context_limits":"OpenSnitch-reported metadata; ancestry, cwd, argv markers and lifecycle variables are unverified claims. Checksums are reported, not locally verified. Missing fields do not prove absence. No file-access, HTTP payload, package provenance or test-listener attribution is available.","attribution":"Captured process path and hostname are unverified claims. Approval covers the network connection, not an HTTP file."}),
         action_ids,
         expires_at_ms: i64::try_from(entry.deadline)
             .unwrap_or(i64::MAX / 1000)

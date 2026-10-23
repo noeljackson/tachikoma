@@ -33,7 +33,8 @@ RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sh
     && python3 bin/test-boundaries.py \
     && cargo test --workspace --all-targets --locked \
     && cargo build --workspace --locked \
-    && python3 conformance/adapter/test_contract.py
+    && python3 conformance/adapter/test_contract.py \
+    && python3 conformance/assessment/test_export.py
 
 # Real browser forms exercise Origin/referrer policy, cookies and async rendering.
 FROM toolchain AS browser-tools
@@ -54,6 +55,15 @@ RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sh
     --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
     cargo build --release --locked -p "$SERVICE" --bin "$BINARY" \
     && install -Dm755 "target/release/$BINARY" /out/service
+
+# Explicit provider evaluations have no connection to approval or firewall services.
+FROM source AS assessment-eval
+RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=tachikoma-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
+    cargo build --locked -p tachikoma-assessment-worker \
+    && install -Dm755 target/debug/tachikoma-assessment-worker /out/tachikoma-assessment-worker
+ENTRYPOINT ["/out/tachikoma-assessment-worker"]
 
 FROM debian:bookworm-slim AS service-runtime
 RUN apt-get update && apt-get install --yes --no-install-recommends ca-certificates \

@@ -465,6 +465,7 @@ pub fn demo_connection(process: &str, host: &str, ip: &str, port: u16) -> Connec
         host: host.into(),
         port,
         url_hints: vec![],
+        context: Default::default(),
     }
 }
 

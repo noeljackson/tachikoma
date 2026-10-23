@@ -154,6 +154,22 @@ pub struct PolicyRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub struct ChoiceQuestion {
+    pub instructions: String,
+    pub labels: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceExample {
+    pub id: String,
+    pub category: String,
+    pub facts: Value,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AssessmentProfile {
     pub instructions: String,
     pub labels: BTreeMap<String, String>,
@@ -166,6 +182,50 @@ pub struct AssessmentProfile {
     pub llm: bool,
     #[serde(default)]
     pub models: Vec<String>,
+    /// Optional first-stage atomic classifications. The category is evaluated afterwards.
+    #[serde(default)]
+    pub questions: BTreeMap<String, ChoiceQuestion>,
+    /// Administrator-authored reference cases; request evidence cannot supply labels.
+    #[serde(default)]
+    pub examples: Vec<ReferenceExample>,
+}
+
+impl AssessmentProfile {
+    pub fn valid_extensions(&self) -> bool {
+        let labels_valid = |labels: &BTreeMap<String, String>| {
+            !labels.is_empty()
+                && labels.len() <= 32
+                && labels.iter().all(|(k, v)| {
+                    !k.is_empty()
+                        && k.len() <= 128
+                        && !k.chars().any(char::is_control)
+                        && v.len() <= 2048
+                })
+        };
+        let mut ids = std::collections::BTreeSet::new();
+        self.questions.len() <= 8
+            && labels_valid(&self.labels)
+            && self.questions.iter().all(|(id, q)| {
+                id != "category"
+                    && !id.is_empty()
+                    && id.len() <= 64
+                    && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    && !q.instructions.is_empty()
+                    && q.instructions.len() <= 4096
+                    && labels_valid(&q.labels)
+            })
+            && self.examples.len() <= 12
+            && self.examples.iter().all(|e| {
+                !e.id.is_empty()
+                    && e.id.len() <= 64
+                    && ids.insert(&e.id)
+                    && self.labels.contains_key(&e.category)
+                    && e.explanation.len() <= 1024
+                    && e.facts.is_object()
+                    && serde_json::to_vec(&e.facts).is_ok_and(|v| v.len() <= 4096)
+            })
+            && serde_json::to_vec(self).is_ok_and(|v| v.len() <= 32_768)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -250,6 +310,33 @@ pub struct Decision {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChoiceJudgment {
+    pub choice: String,
+    pub confidence: f64,
+    #[serde(default)]
+    pub probabilities: BTreeMap<String, f64>,
+}
+
+impl ChoiceJudgment {
+    pub fn valid_for(&self, labels: &BTreeMap<String, String>) -> bool {
+        labels.contains_key(&self.choice)
+            && self.confidence.is_finite()
+            && (0.0..=1.0).contains(&self.confidence)
+            && (self.probabilities.is_empty()
+                || (self.probabilities.len() == labels.len()
+                    && self.probabilities.iter().all(|(k, p)| {
+                        labels.contains_key(k) && p.is_finite() && (0.0..=1.0).contains(p)
+                    })
+                    && (self.probabilities.values().sum::<f64>() - 1.0).abs() <= 0.02
+                    && self.probabilities.get(&self.choice).is_some_and(|winner| {
+                        self.probabilities
+                            .values()
+                            .all(|p| p <= &(winner + 0.000001))
+                    })))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assessment {
     pub state: String,
     pub category: String,
@@ -259,6 +346,8 @@ pub struct Assessment {
     pub llm_model: String,
     pub evidence_digest: String,
     pub completed_at_ms: i64,
+    #[serde(default)]
+    pub judgments: BTreeMap<String, ChoiceJudgment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -506,4 +595,56 @@ pub struct SendMessage {
 pub struct ConversationTask {
     pub messages: Vec<ConversationMessage>,
     pub model: Option<String>,
+}
+
+#[cfg(test)]
+mod classification_tests {
+    use super::*;
+    #[test]
+    fn old_profiles_remain_compatible_and_new_reference_labels_are_bounded() {
+        let mut profile:AssessmentProfile=serde_json::from_value(serde_json::json!({"instructions":"Classify","labels":{"unknown":"Unknown"},"subject_fields":[],"jev":true,"llm":false})).unwrap();
+        assert!(profile.valid_extensions());
+        profile.examples.push(ReferenceExample {
+            id: "ref".into(),
+            category: "allow".into(),
+            facts: serde_json::json!({}),
+            explanation: "Unsupported label".into(),
+        });
+        assert!(!profile.valid_extensions());
+        profile.examples[0].category = "unknown".into();
+        assert!(profile.valid_extensions());
+        profile.examples.push(profile.examples[0].clone());
+        assert!(!profile.valid_extensions());
+        profile.examples.clear();
+        profile.questions.insert(
+            "category".into(),
+            ChoiceQuestion {
+                instructions: "Cannot replace overall category".into(),
+                labels: profile.labels.clone(),
+            },
+        );
+        assert!(!profile.valid_extensions());
+    }
+    #[test]
+    fn rejects_fabricated_or_non_normalized_probability_distributions() {
+        let labels = [
+            ("expected".into(), "Expected".into()),
+            ("unknown".into(), "Unknown".into()),
+        ]
+        .into();
+        let mut judgment = ChoiceJudgment {
+            choice: "unknown".into(),
+            confidence: 0.5,
+            probabilities: [("expected".into(), 0.25), ("unknown".into(), 0.75)].into(),
+        };
+        assert!(judgment.valid_for(&labels));
+        judgment.choice = "expected".into();
+        assert!(!judgment.valid_for(&labels));
+        judgment.choice = "unknown".into();
+        judgment.probabilities.insert("unknown".into(), 0.5);
+        assert!(!judgment.valid_for(&labels));
+        judgment.probabilities.clear();
+        judgment.confidence = f64::NAN;
+        assert!(!judgment.valid_for(&labels));
+    }
 }

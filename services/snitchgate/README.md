@@ -102,11 +102,18 @@ or stored in the config. Only Jev's official HTTPS endpoint is configured by
 default; the pinned model is configurable and must be available to your account.
 No provider calls are made by `check-config`.
 
-Jev receives only process path, PID, UID, protocol, destination IP/host, and port.
+The standalone Jev adapter receives process path, PID, UID, protocol, destination IP/host, and port.
 It returns a category and confidence. Categories are `expected`, `development`,
-`telemetry`, `suspicious`, and `unknown`. Arguments, environment, working directory,
-raw alerts, and daemon configuration are discarded at the protocol boundary,
+`telemetry`, `suspicious`, and `unknown`. Raw arguments and environment values, raw alerts, and daemon configuration
+are discarded at the protocol boundary,
 apart from bounded, sanitized URL hints reserved for human inspection below.
+In central Tachikoma mode, bounded cwd, ancestry, reported checksums, source
+endpoint, fixed argument markers and a whitelisted npm lifecycle event are also
+retained as `process_context`. Raw argv/environment are still discarded. All
+context is explicitly unverified; it does not establish executable integrity,
+authorization, file access, package provenance or listener ownership. The
+[central assessment profile](../../contrib/adapters/snitchgate.queue.json)
+uses this context with staged Jev questions and labeled reference examples.
 The remaining metadata still reveals application and network activity to an
 enabled hosted provider.
 

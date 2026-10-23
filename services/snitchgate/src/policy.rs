@@ -124,6 +124,7 @@ mod tests {
             host: String::new(),
             port: 8000,
             url_hints: vec![],
+            context: Default::default(),
         }
     }
     #[test]

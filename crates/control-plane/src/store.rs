@@ -447,7 +447,8 @@ impl Store {
             }
         }
         if let Some(profile) = &manifest.assessment
-            && (profile.instructions.len() > 4096
+            && (!profile.valid_extensions()
+                || profile.instructions.len() > 4096
                 || profile.labels.is_empty()
                 || profile.labels.len() > 32
                 || profile.subject_fields.len() > 32
@@ -1036,6 +1037,22 @@ impl Store {
                 .query_row("SELECT profile FROM jobs WHERE id=?1", [id], |r| r.get(0))?;
         let profile: AssessmentProfile = decode(&profile)?;
         if !result.category.is_empty() && !profile.labels.contains_key(&result.category) {
+            return Err(Fault::bad());
+        }
+        if result.judgments.len() > 9
+            || result.judgments.iter().any(|(id, value)| {
+                if id == "category" {
+                    !value.valid_for(&profile.labels)
+                        || value.choice != result.category
+                        || Some(value.confidence) != result.confidence
+                } else {
+                    profile
+                        .questions
+                        .get(id)
+                        .is_none_or(|q| !value.valid_for(&q.labels))
+                }
+            })
+        {
             return Err(Fault::bad());
         }
         review.assessment = Some(request.assessment);
@@ -1812,6 +1829,7 @@ mod tests {
             llm_model: String::new(),
             evidence_digest: request.evidence_digest,
             completed_at_ms: now_ms(),
+            judgments: Default::default(),
         };
         assert!(
             store
@@ -1996,6 +2014,7 @@ mod tests {
                 llm_model: "fixture".into(),
                 evidence_digest: job.review.evidence_digest.clone(),
                 completed_at_ms: now_ms(),
+                judgments: Default::default(),
             },
         }
     }

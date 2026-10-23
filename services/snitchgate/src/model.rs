@@ -37,6 +37,9 @@ pub struct Connection {
     /// Human inspection only: matching argv URLs with user info/query/fragment removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub url_hints: Vec<String>,
+    /// Reported context, not independently verified executable identity.
+    #[serde(default)]
+    pub context: crate::context::ProcessContext,
 }
 
 fn argument_url_hints(raw: &protocol::Connection, ip: IpAddr, port: u16) -> Vec<String> {
@@ -132,6 +135,7 @@ impl TryFrom<protocol::Connection> for Connection {
         let ip = raw.dst_ip.parse()?;
         let port = u16::try_from(raw.dst_port)?;
         let url_hints = argument_url_hints(&raw, ip, port);
+        let context = crate::context::ProcessContext::capture(&raw);
         Ok(Self {
             process: raw.process_path,
             pid: raw.process_id,
@@ -141,6 +145,7 @@ impl TryFrom<protocol::Connection> for Connection {
             host: raw.dst_host,
             port,
             url_hints,
+            context,
         })
     }
 }

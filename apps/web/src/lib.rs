@@ -249,6 +249,18 @@ fn render_review(review: &Review, csrf: &str) -> String {
             escape(&a.llm_model),
             escape(&a.rationale)
         ));
+        for (id, judgment) in a
+            .judgments
+            .iter()
+            .filter(|(id, _)| id.as_str() != "category")
+        {
+            out.push_str(&format!(
+                "<p>{}: {} ({:.0}% confidence)</p>",
+                escape(id),
+                escape(&judgment.choice),
+                judgment.confidence * 100.0
+            ));
+        }
     } else {
         out.push_str(
             "<p>Classification pending or not requested. Human review remains required.</p>",

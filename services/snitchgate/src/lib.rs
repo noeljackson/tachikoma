@@ -19,3 +19,5 @@ pub mod protocol {
 }
 
 pub mod tachikoma;
+
+pub mod context;

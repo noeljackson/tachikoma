@@ -97,10 +97,23 @@ interactive queues; each queue also has its own cap.
 
 ## Jev and local Qwen
 
-The supplied network manifest enables Jev classification plus Ollama explanation.
-Only its listed `subject_fields` and `evidence_fields` go to models. URL hints
-and human resource details are excluded. High confidence still requires a human
-in this manual queue.
+The supplied network manifest enables staged Jev classification plus Ollama
+explanation. Jev first classifies activity and origin, then assesses the overall
+category with eight administrator-authored examples, including install-time
+credential scanners and deceptive local-test paths. Preliminary model judgments
+are explicitly opinions, not additional observed evidence. Full available
+probability distributions and the separate judgments are retained and displayed.
+Failure of either stage leaves classification unavailable and review manual.
+
+Only listed `subject_fields` and `evidence_fields` go to models. The network
+producer includes bounded OpenSnitch-reported cwd, up to eight ancestors, selected
+checksum formats, source endpoint, fixed argument markers and a whitelisted npm
+lifecycle marker. It never retains raw argv/environment. These are reported
+claims, not independently verified identity, user authorization or package
+provenance. URL hints and human resource details remain excluded. No file-access,
+HTTP payload or listener-ownership sensor has been added. High confidence still
+requires a human in this manual queue. Reference examples are omitted from the
+Qwen explanation prompt so they cannot be mistaken for current activity.
 
 Place an encrypted, user-scoped `TYPESAFE_API_KEY` credential at the path used
 by `tachikoma-assessment.service`, or run the worker with an existing private
@@ -119,6 +132,46 @@ provider responses, prompts, tokens or daemon configuration. Investigation model
 selection requires both the queue's `models` allowlist and worker
 `--allow-model` flags for alternatives to its default model. No worker runs shell
 commands or queries arbitrary URLs supplied by a request.
+
+### Model-only classification evaluation
+
+Build the explicit Docker evaluation target; it makes provider requests but never
+connects to the approval API or OpenSnitch. Supply the provider key through the
+container environment or a protected credential file, never a command-line value.
+
+```sh
+docker build --target assessment-eval -t tachikoma:assessment-eval .
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env TYPESAFE_API_KEY tachikoma:assessment-eval \
+  --evaluate /app/conformance/assessment/network-cases.json \
+  --evaluation-profile /app/contrib/adapters/snitchgate.queue.json
+```
+
+The evaluator compares the previous seven-field profile, enriched context with
+the revised rubric, and the staged profile with examples against identical cases
+and a pinned model.
+Reports include correct classifications, abstentions, suspicious-case detection,
+high-confidence errors and latency, with provider failures counted separately.
+The synthetic suite is a regression check, not a held-out real-world security
+benchmark. The `--report` path is created once with mode 0600 and excludes input
+facts and credentials. Mount a private output directory to retain it.
+
+`bin/export-network-evaluation.py --database PATH --output PRIVATE.json --limit 16`
+exports deduplicated metadata from at most 2,000 recent history rows in read-only
+mode, with a five-second query budget. Historical PIDs, argv and environment are
+not exported or looked up in `/proc`; unknown ancestry and checksums stay unknown.
+Every historical case is unlabeled. Its past firewall outcome is not a safety
+label, so history replay measures confidence and category changes, not accuracy.
+
+The initial [recorded comparison](../conformance/assessment/results-20261023.json)
+with Jev 1.13.0 matched 10/24 scenario labels using the previous profile, 16/24
+with enriched context/revised rubric, and 23/24 with the full staged profile.
+All five local tests were recognized by the staged profile. Four of five
+suspicious install scenarios were flagged; the remaining one was unknown, with
+none classified as benign. Average classifier latency was 195/179/409 ms
+respectively. These are one-pass authored synthetic results, not a malware
+detection guarantee. All 16 unlabeled historical scopes remained unknown in all
+variants; their missing live ancestry/lifecycle data was not reconstructed.
 
 ## Slack
 

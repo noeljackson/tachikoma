@@ -29,7 +29,7 @@ class Fixture:
             def do_POST(self):
                 data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
                 fixture.requests.append(json.loads(data))
-                body = json.dumps(response).encode()
+                body = json.dumps(response(json.loads(data)) if callable(response) else response).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -262,6 +262,27 @@ class ContractTests(unittest.TestCase):
         child = self.child([str(ROOT / "target/debug/snitchgate"), "serve", "--runtime-dir", str(runtime), "--state-dir", str(self.root / "broker-state"), "--config", str(config)], env=environment)
         until(lambda: (runtime / "opensnitch.sock").exists())
         return child, runtime
+    def test_invalid_first_stage_leaves_request_manual_without_calling_category(self):
+        queue=self.example_queue()
+        queue['assessment']={'instructions':'Classify fixture','labels':{'unknown':'Unknown'},'subject_fields':['target'],'jev':True,'llm':False,'questions':{'origin':{'instructions':'Identify origin','labels':{'unknown':'Unknown'}}}}
+        self.admin.call('POST','/queues',queue)
+        producer=self.enroll('producer','producer','example.review')
+        worker=self.enroll('worker','worker','example.review','')
+        self.run_example(producer,self.root/'unavailable.json')
+        review=self.pending('example.review')
+        fixture=Fixture(self.root/'invalid-stage.sock',{'model':'fixture','answers':{'origin':{'type':'choice','choice':'invented-allow','confidence':1.0}}})
+        self.fixtures.append(fixture)
+        key=self.root/'key'
+        descriptor=os.open(key,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(descriptor,'w') as file:file.write('fixture-only')
+        result=subprocess.run([str(ROOT/'target/debug/tachikoma-assessment-worker'),'--socket',str(self.socket),'--credential',str(worker),'--jev-endpoint','http://fixture.invalid/jev','--jev-socket',str(fixture.path),'--jev-key-file',str(key),'--once'],capture_output=True,timeout=6)
+        self.assertEqual(result.returncode,0)
+        current=self.admin.call('GET','/requests/'+review['id'])
+        self.assertEqual(current['state'],'pending')
+        self.assertIsNone(current['decision'])
+        self.assertEqual(current['assessment']['state'],'unavailable')
+        self.assertEqual(current['assessment']['judgments'],{})
+        self.assertEqual(len(fixture.requests),1)
     def network_queue(self):
         queue = json.loads((ROOT / "contrib/adapters/snitchgate.queue.json").read_text())
         return queue
@@ -272,7 +293,10 @@ class ContractTests(unittest.TestCase):
         _, runtime = self.start_broker(token, timeout=8)
         mock = self.child([str(ROOT / "target/debug/snitchgate"), "mock", "--socket", str(runtime / "opensnitch.sock")])
         review = self.pending("network.egress")
-        jev = Fixture(self.root / "jev.sock", {"model":"jev-fixture","answers":{"category":{"type":"choice","choice":"development","confidence":0.97}}})
+        def jev_response(request):
+            choices = {'category':'development','activity':'local_test','origin':'project_test'}
+            return {'model':'jev-fixture','answers':{name:{'type':'choice','choice':choices[name],'confidence':0.97,'probabilities':{label:1.0 if label==choices[name] else 0.0 for label in question['criteria']}} for name,question in request['questions'].items()}}
+        jev = Fixture(self.root / "jev.sock", jev_response)
         llm = Fixture(self.root / "llm.sock", {"model":"qwen-fixture","done":True,"done_reason":"stop","message":{"content":json.dumps({"explanation":"Fixture facts are insufficient to prove intent."})}})
         self.fixtures.extend([jev, llm])
         key = self.root / "provider.token"
@@ -285,6 +309,13 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(classified["assessment"]["category"], "development")
         self.assertEqual(classified["assessment"]["llm_model"], "qwen-fixture")
         self.assertEqual(classified["state"], "pending")
+        self.assertEqual(len(jev.requests),2)
+        self.assertEqual(classified['assessment']['judgments']['activity']['choice'],'local_test')
+        self.assertIn('process_context',jev.requests[0]['state']['current_request']['evidence'])
+        self.assertNotIn('preliminary_model_opinions',jev.requests[0]['state'])
+        self.assertEqual(jev.requests[1]['state']['preliminary_model_opinions']['origin']['choice'],'project_test')
+        self.assertEqual(set(jev.requests[1]['questions']),{'category'})
+        self.assertGreater(len(jev.requests[1]['state']['reference_examples']),3)
         self.assertNotIn("url_hints", json.dumps(jev.requests))
         self.assertNotIn("resource_details", json.dumps(llm.requests))
         self.admin.call("POST", f"/requests/{review['id']}/decision", {"revision":1,"action_id":"allow-once"})

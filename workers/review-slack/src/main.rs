@@ -168,7 +168,21 @@ fn card(delivery: &Delivery) -> Value {
                     .unwrap_or_else(|| "confidence unavailable".into()),
                 a.jev_model,
                 a.llm_model,
-                a.rationale
+                format_args!(
+                    "{}\n{}",
+                    a.judgments
+                        .iter()
+                        .filter(|(id, _)| id.as_str() != "category")
+                        .map(|(id, j)| format!(
+                            "{}: {} ({:.0}%)",
+                            id,
+                            j.choice,
+                            j.confidence * 100.0
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                    a.rationale
+                )
             )
         })
         .unwrap_or_else(|| {
