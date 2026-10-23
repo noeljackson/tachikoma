@@ -1,5 +1,19 @@
 # Tachikoma
 
+The proposed next direction is a **monorepo of independent services**, with
+Tachikoma coordinating queues, policy, AI assessment, human review and audit.
+Snitchgate and Kubernetesgate retain their own domain logic, credentials,
+deadlines and enforcement. Registrygate stays in its own repository and is
+implemented last, with standalone advisory-based automatic policy and optional
+Tachikoma approval. Services in external repositories use
+the same versioned adapter API as services in the monorepo.
+
+The [full architecture and implementation plan](docs/queue-control-plane.md)
+covers service and crate boundaries, adapter registration, scoped decisions,
+durable workers, TUI and Slack parity, external integrations, migration phases
+and acceptance tests. This direction is not implemented by the prototype
+described below; the existing repositories and live services remain in place.
+
 Tachikoma is a local-first Rust control plane for turning security and
 operational observations into typed, reviewable proposals. It starts with
 OpenSnitch and Kubernetes command observations, but adapters do not execute
