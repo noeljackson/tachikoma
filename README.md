@@ -59,7 +59,7 @@ container and private Unix socket:
 docker compose exec --no-TTY tachikoma \
   tachikoma --rpc-socket /tmp/tachikoma.sock status
 
-docker compose exec --no-TTY tachikoma \
+docker compose exec tachikoma \
   tachikoma --rpc-socket /tmp/tachikoma.sock tui
 ```
 
@@ -161,6 +161,28 @@ tachikoma status
 tachikoma queue
 tachikoma tui
 ```
+
+The TUI groups proposals into logical queues by adapter, with an **All** view.
+Use `Tab` / `Shift-Tab` to switch queues, arrows to select a proposal, and
+`PageUp` / `PageDown` to scroll its evidence. The queue refreshes every two
+seconds; `r` refreshes immediately. Counts include every proposal state.
+Queues are views over the same durable store, so investigations stay attached
+to the original proposal. Filtering is a display/query option, not an access
+control boundary.
+
+To start with one adapter, or filter the plain CLI output:
+
+```sh
+tachikoma tui --adapter opensnitch
+tachikoma queue --adapter kubernetes
+```
+
+An empty queue means no matching proposals have been submitted. Live Snitchgate
+and Registrygate integrations are not implemented yet. To try the UI with a
+review-only example, run `tachikoma suggest-kubectl --context demo -- get pods`;
+this records an observation without running `kubectl`. AI investigation also
+requires `ai.enabled` and a configured model; proposal evidence is visible
+without enabling AI.
 
 Approve or reject a reviewable proposal by ID from `tachikoma queue`:
 

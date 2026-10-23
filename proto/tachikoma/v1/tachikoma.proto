@@ -96,6 +96,8 @@ message AnalysisSummary {
 
 message ListProposalsRequest {
   ProposalState state = 1;
+  // Exact adapter name; empty includes all adapters.
+  string adapter = 2;
 }
 
 message ListProposalsResponse {

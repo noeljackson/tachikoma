@@ -63,6 +63,8 @@ test-docker:
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock status | grep -F 'opensnitch:' >/dev/null; \
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock policy upsert kubectl-development-read --adapter kubernetes --action review_kubectl_observation --scope '{"context":"development"}' --mode automatic --risk-ceiling low; \
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock suggest-kubectl --context development -- get pods; \
+		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue --adapter kubernetes | grep -F 'kubernetes' >/dev/null; \
+		test -z "$$(docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue --adapter missing-adapter)"; \
 		docker compose restart tachikoma; \
 		until curl --fail --silent http://127.0.0.1:17447/health >/dev/null 2>&1; do sleep 1; done; \
 		docker compose exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock queue | grep -F 'kubernetes' >/dev/null; \
