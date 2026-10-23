@@ -31,6 +31,12 @@ Principals have a role and explicit queue allowlist:
 
 Enrollment returns a random 256-bit credential once. The daemon stores only its
 hash. CLI enrollment writes it to a new mode-0600 file under a private directory.
+The loopback web frontend uses a reserved `local-web` reviewer identity with a
+private process-local capability, regenerated at daemon startup. Its browser UI
+requires no credential entry; cookies/hidden tokens protect form submissions.
+This identity cannot be enrolled or rotated through the public API, administer
+queues/identities or claim worker jobs.
+
 Rotation invalidates the old credential, pending producer consent and worker
 leases. Updating a principal also rotates its key. Revoked identities cannot be
 silently enrolled again with a different owner; use an explicit update/rotation.

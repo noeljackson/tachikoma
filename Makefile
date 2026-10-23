@@ -11,7 +11,7 @@ INSTALL_BIN_DIR := $(INSTALL_PREFIX)/bin
 build-release:
 	cargo build --release --locked -p tachikoma -p approval-daemon
 
-check: supplychain test-docker
+check: supplychain test-docker test-browser
 	python3 bin/check-boundaries.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -61,7 +61,7 @@ test-docker:
 		docker compose --project-name "$$contract_project" up --build --detach; \
 		trap 'docker compose --project-name "$$contract_project" down --volumes --remove-orphans' EXIT; \
 		until curl --fail --silent http://127.0.0.1:17447/health >/dev/null 2>&1; do sleep 1; done; \
-		curl --fail --silent --show-error http://127.0.0.1:17447/approval/ | grep -F 'Reviewer credential' >/dev/null; \
+		curl --fail --silent --show-error http://127.0.0.1:17447/approval/ | grep -F 'Local review' >/dev/null; \
 		docker compose --project-name "$$contract_project" exec --no-TTY tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock approval --credential /var/lib/tachikoma/approval/admin.token health | grep -F 'queues' >/dev/null; \
 		docker compose --project-name "$$contract_project" restart tachikoma; \
 		until curl --fail --silent http://127.0.0.1:17447/health >/dev/null 2>&1; do sleep 1; done; \
@@ -80,3 +80,7 @@ install-workers:
 	install -Dm644 contrib/systemd/tachikoma-assessment.service "$(SYSTEMD_USER_DIR)/tachikoma-assessment.service"
 	install -Dm644 contrib/systemd/tachikoma-slack.service "$(SYSTEMD_USER_DIR)/tachikoma-slack.service"
 	systemctl --user daemon-reload
+
+.PHONY: test-browser
+test-browser:
+	docker build --target browser-test --tag tachikoma:browser-test .

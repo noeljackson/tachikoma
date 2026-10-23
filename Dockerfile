@@ -1,8 +1,9 @@
-FROM rust:1.96-bookworm AS source
+FROM rust:1.96-bookworm AS toolchain
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+FROM toolchain AS source
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY proto ./proto
 COPY bin ./bin
@@ -33,6 +34,16 @@ RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sh
     && cargo test --workspace --all-targets --locked \
     && cargo build --workspace --locked \
     && python3 conformance/adapter/test_contract.py
+
+# Real browser forms exercise Origin/referrer policy, cookies and async rendering.
+FROM toolchain AS browser-tools
+RUN apt-get update && apt-get install --yes --no-install-recommends chromium chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+FROM browser-tools AS browser-test
+COPY --from=test /out /out
+COPY --from=source /app/conformance /app/conformance
+COPY --from=source /app/examples /app/examples
+RUN TACHIKOMA_TEST_DAEMON=/out/tachikomad python3 conformance/adapter/test_browser.py
 
 # Package selection builds a service without compiling any sibling implementation.
 FROM source AS service-build

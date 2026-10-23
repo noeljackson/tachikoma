@@ -45,6 +45,13 @@ The same target supports `snitchgate`, `tachikoma-assessment-worker` and
 socket and explicit arguments. No container needs the Docker socket, privileges
 or host networking.
 
+The loopback web UI at `http://127.0.0.1:7447/approval/` opens directly without
+credential entry. The daemon creates a private, process-local `local-web` reviewer
+capability at startup; it is never sent to the browser. That reviewer can inspect
+and decide queues but cannot administer identities/policy or claim jobs. Existing
+service/API credentials remain scoped and protected. Keep the listener on
+loopback; the container example publishes its port on host loopback only.
+
 ## Register queues and enroll processes
 
 ```sh

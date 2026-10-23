@@ -10,7 +10,7 @@ This Rust workspace includes:
 | Component | Responsibility |
 | --- | --- |
 | `apps/daemon` | Generic durable approval API (`tachikomad`) |
-| `apps/tui`, `apps/web` | Ratatui and authenticated local web review |
+| `apps/tui`, `apps/web` | Ratatui and local web review |
 | `workers/assessment` | Bounded Jev classification and Ollama explanations/investigations |
 | `workers/review-slack` | Socket Mode delivery and authorized replies |
 | `services/snitchgate` | OpenSnitch transport, local deadline and temporary rules |
@@ -33,7 +33,7 @@ Rust 1.96+, Cargo and `protoc` are required for workspace builds. Runtime tests
 run in Docker. The default build installs no services and contacts no providers.
 
 ```sh
-make check             # strict supply-chain gate, Docker runtime tests, fmt, clippy
+make check             # strict supply-chain gate, Docker runtime/browser tests, fmt, clippy
 make build-platform    # build all independently runnable services
 make service-enable    # install/start the generic local approval daemon
 ```
@@ -55,9 +55,11 @@ Use `i` to investigate, `F2` to choose an enabled model, `Enter` to send,
 When the selected request settles elsewhere, select another request before
 acting again. Disconnected review controls are disabled.
 
-Open <http://127.0.0.1:7447/approval/> and sign in with an enrolled reviewer
-credential. The web UI requires a loopback Host, same-origin submissions and
-CSRF tokens. It supports scoped actions and investigation chats without scripts.
+Open <http://127.0.0.1:7447/approval/> directly; no web sign-in or credential entry
+is required on this local workstation. The daemon keeps its own limited reviewer
+capability server-side. Same-origin submissions and CSRF protection remain
+enabled. History shows previous decisions; investigation replies refresh
+automatically while a turn is running.
 
 To try without installing binaries:
 

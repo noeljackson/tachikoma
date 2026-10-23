@@ -1,4 +1,4 @@
-//! Local authenticated review frontend. All data and decisions use the public API.
+//! Loopback review frontend. Browser sessions protect CSRF; the private API client stays server-side.
 use approval_client::Client;
 use approval_protocol::*;
 use axum::{
@@ -13,7 +13,6 @@ use axum::{
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -21,12 +20,11 @@ use std::{
 struct Session {
     client: Client,
     csrf: String,
-    actor: String,
     expires: Instant,
 }
 #[derive(Clone)]
 struct Web {
-    socket: PathBuf,
+    client: Client,
     sessions: Arc<Mutex<HashMap<String, Session>>>,
 }
 fn random() -> Option<String> {
@@ -42,14 +40,12 @@ fn escape(value: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
-fn page(title: &str, content: &str, refresh: bool) -> Html<String> {
+fn page(title: &str, content: &str, refresh: Option<u32>) -> Html<String> {
     Html(format!(
-        "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>{}<title>{}</title><style>body{{font:16px system-ui;background:#10171f;color:#dce5ed;margin:2rem auto;max-width:1100px;padding:0 1rem}}a{{color:#80d8cf}}article{{border:1px solid #435268;border-radius:8px;padding:1rem;margin:1rem 0}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#192430;padding:1rem}}button,input,select{{font:inherit;padding:.6rem;margin:.3rem}}small{{color:#a9bacb}}nav{{display:flex;gap:1rem;flex-wrap:wrap}}form{{display:inline}}label{{display:block}}code{{overflow-wrap:anywhere}}</style></head><body><h1>{}</h1>{}</body></html>",
-        if refresh {
-            "<meta http-equiv=refresh content=10>"
-        } else {
-            ""
-        },
+        "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>{}<title>{}</title><style>body{{font:16px system-ui;background:#10171f;color:#dce5ed;margin:2rem auto;max-width:1100px;padding:0 1rem}}a{{color:#80d8cf}}article{{border:1px solid #435268;border-radius:8px;padding:1rem;margin:1rem 0}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#192430;padding:1rem}}button,input,select,textarea{{font:inherit;padding:.6rem;margin:.3rem}}small{{color:#a9bacb}}nav{{display:flex;gap:1rem;flex-wrap:wrap}}form{{display:inline}}label{{display:block}}code{{overflow-wrap:anywhere}}</style></head><body><h1>{}</h1>{}</body></html>",
+        refresh
+            .map(|seconds| format!("<meta http-equiv=refresh content={seconds}>"))
+            .unwrap_or_default(),
         escape(title),
         escape(title),
         content
@@ -95,7 +91,7 @@ async fn guard(request: Request<Body>, next: Next) -> Response {
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    headers.insert("referrer-policy", HeaderValue::from_static("same-origin"));
     headers.insert("content-security-policy",HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"));
     response
 }
@@ -110,18 +106,54 @@ fn session(state: &Web, headers: &HeaderMap) -> Option<Session> {
     sessions.retain(|_, s| s.expires > Instant::now());
     sessions.get(cookie).cloned()
 }
-pub fn router(socket: PathBuf) -> Router {
+fn local_session(
+    state: &Web,
+    headers: &HeaderMap,
+) -> Result<(Session, Option<String>), StatusCode> {
+    if let Some(existing) = session(state, headers) {
+        return Ok((existing, None));
+    }
+    let token = random().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let csrf = random().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let current = Session {
+        client: state.client.clone(),
+        csrf,
+        expires: Instant::now() + Duration::from_secs(3600),
+    };
+    let mut sessions = state
+        .sessions
+        .lock()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    sessions.retain(|_, s| s.expires > Instant::now());
+    if sessions.len() >= 128 {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    sessions.insert(token.clone(), current.clone());
+    Ok((current, Some(token)))
+}
+fn browser_response(mut response: Response, token: Option<String>) -> Response {
+    if let Some(token) = token
+        && let Ok(value) = HeaderValue::from_str(&format!(
+            "tachikoma_session={token}; Path=/approval/; HttpOnly; SameSite=Strict; Max-Age=3600"
+        ))
+    {
+        response.headers_mut().insert("set-cookie", value);
+    }
+    response
+}
+fn session_error() -> Response {
+    (StatusCode::FORBIDDEN,page("Page expired","<p>Reload this local page and try again. No decision was made.</p><p><a href='/approval/'>Return to the inbox</a></p>",None)).into_response()
+}
+pub fn router(client: Client) -> Router {
     Router::new()
         .route("/", get(index))
-        .route("/login", post(login))
-        .route("/logout", post(logout))
         .route("/requests/{id}/decide", post(decide))
         .route("/requests/{id}/conversation", get(conversation).post(chat))
         .route("/requests/{id}/conversation/cancel", post(cancel_chat))
         .layer(DefaultBodyLimit::max(4096))
         .layer(middleware::from_fn(guard))
         .with_state(Web {
-            socket,
+            client,
             sessions: Arc::new(Mutex::new(HashMap::new())),
         })
 }
@@ -135,8 +167,9 @@ async fn index(
     headers: HeaderMap,
     Query(filter): Query<Filter>,
 ) -> Response {
-    let Some(session) = session(&state, &headers) else {
-        return page("Tachikoma review","<p>Sign in with an enrolled reviewer credential. Credentials are sent only to this local endpoint and are not stored in the browser.</p><form method=post action=login><label>Reviewer credential <input name=credential type=password autocomplete=off required maxlength=64></label><button>Sign in</button></form><p><small>The credential is provided by your Tachikoma administrator. The private local administrator credential is in the daemon’s approval state directory.</small></p>",false).into_response();
+    let (session, cookie) = match local_session(&state, &headers) {
+        Ok(value) => value,
+        Err(status) => return status.into_response(),
     };
     let history = filter.view.as_deref() == Some("history");
     let health_view = filter.view.as_deref() == Some("health");
@@ -150,11 +183,9 @@ async fn index(
         ))
     }
     .await;
-    let(health,reviews)=match result{Ok(value)=>value,Err(_)=>return (StatusCode::SERVICE_UNAVAILABLE,page("Review unavailable","<p>The approval API is unavailable. No decision was made. Retry after reconnection.</p>",false)).into_response()};
-    let mut html = format!(
-        "<p>Signed in as <strong>{}</strong></p><nav><a href='./'>Inbox</a><a href='?view=history'>History</a><a href='?view=health'>Health</a><a href='./'>All queues</a></nav><form method=post action=logout><input type=hidden name=csrf value='{}'><button>Sign out</button></form>",
-        escape(&session.actor),
-        session.csrf
+    let(health,reviews)=match result{Ok(value)=>value,Err(_)=>return (StatusCode::SERVICE_UNAVAILABLE,page("Review unavailable","<p>The approval API is unavailable. No decision was made. Retry after reconnection.</p>",None)).into_response()};
+    let mut html = String::from(
+        "<p>Local review · connected</p><nav><a href='/approval/'>Inbox</a><a href='?view=history'>History</a><a href='?view=health'>Health</a><a href='/approval/'>All queues</a></nav>",
     );
     for queue in &health.queues {
         html.push_str(&format!(
@@ -181,13 +212,13 @@ async fn index(
             .filter(|r| filter.queue.as_ref().is_none_or(|q| *q == r.request.queue))
             .collect::<Vec<_>>();
         if reviews.is_empty() {
-            html.push_str("<p>No requests in this view. A registered producer must submit a request before review is available.</p>");
+            html.push_str("<p>No requests are waiting in this view. Existing network rules keep handling traffic. <a href='?view=history'>Open History to inspect previous requests and decisions.</a></p>");
         }
         for review in reviews {
             html.push_str(&render_review(review, &session.csrf));
         }
     }
-    page("Tachikoma", &html, true).into_response()
+    browser_response(page("Tachikoma", &html, Some(10)).into_response(), cookie)
 }
 fn render_review(review: &Review, csrf: &str) -> String {
     let now = SystemTime::now()
@@ -230,7 +261,7 @@ fn render_review(review: &Review, csrf: &str) -> String {
     ));
     if review.state == ReviewState::Pending && review.expires_at_ms > now {
         for action in &review.actions {
-            out.push_str(&format!("<p><strong>{}</strong> — {:?}</p><pre>{}</pre><form method=post action='requests/{}/decide'><input type=hidden name=csrf value='{}'><input type=hidden name=revision value='{}'><button name=action_id value='{}'>{}</button></form>",escape(&action.label),action.effect,escape(&action.scope.to_string()),escape(&review.id),csrf,review.revision,escape(&action.id),escape(&action.label)));
+            out.push_str(&format!("<p><strong>{}</strong> — {:?}</p><pre>{}</pre><form method=post action='/approval/requests/{}/decide'><input type=hidden name=csrf value='{}'><input type=hidden name=revision value='{}'><button name=action_id value='{}'>{}</button></form>",escape(&action.label),action.effect,escape(&action.scope.to_string()),escape(&review.id),csrf,review.revision,escape(&action.id),escape(&action.label)));
         }
     }
     if let Some(decision) = &review.decision {
@@ -261,8 +292,9 @@ async fn conversation(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let Some(session) = session(&state, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+    let (session, cookie) = match local_session(&state, &headers) {
+        Ok(value) => value,
+        Err(status) => return status.into_response(),
     };
     let result = async {
         Ok::<_, anyhow::Error>((
@@ -309,9 +341,17 @@ async fn conversation(
                 ));
             }
         }
-        html.push_str(&format!("<form method=post action='/approval/requests/{}/conversation'><input type=hidden name=csrf value='{}'><input type=hidden name=idempotency_key value='{}'><label>Model <select name=model>{}</select></label><label>Message <input name=message required maxlength=2048 autocomplete=off></label><button>Send</button></form>",escape(&id),session.csrf,key,models));
+        html.push_str(&format!("<form method=post action='/approval/requests/{}/conversation'><input type=hidden name=csrf value='{}'><input type=hidden name=idempotency_key value='{}'><label>Model <select name=model>{}</select></label><label>Message <textarea name=message required maxlength=2048 rows=4 autocomplete=off></textarea></label><button>Send</button></form>",escape(&id),session.csrf,key,models));
     }
-    page("Investigation", &html, false).into_response()
+    browser_response(
+        page(
+            "Investigation",
+            &html,
+            (chat.status == "running").then_some(2),
+        )
+        .into_response(),
+        cookie,
+    )
 }
 #[derive(Deserialize)]
 struct ChatForm {
@@ -327,10 +367,10 @@ async fn chat(
     Form(input): Form<ChatForm>,
 ) -> Response {
     let Some(session) = session(&state, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return session_error();
     };
     if input.csrf != session.csrf {
-        return StatusCode::FORBIDDEN.into_response();
+        return session_error();
     }
     let model = (!input.model.is_empty()).then_some(input.model);
     match session
@@ -357,66 +397,18 @@ async fn cancel_chat(
     State(state): State<Web>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Form(input): Form<Logout>,
+    Form(input): Form<CsrfForm>,
 ) -> Response {
     let Some(session) = session(&state, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return session_error();
     };
     if input.csrf != session.csrf {
-        return StatusCode::FORBIDDEN.into_response();
+        return session_error();
     }
     match session.client.cancel_conversation(&id).await {
         Ok(_) => Redirect::to(&format!("/approval/requests/{id}/conversation")).into_response(),
         Err(_) => StatusCode::CONFLICT.into_response(),
     }
-}
-#[derive(Deserialize)]
-struct Login {
-    credential: String,
-}
-async fn login(State(state): State<Web>, Form(input): Form<Login>) -> Response {
-    let Ok(client) = Client::new(
-        "http://tachikoma.local",
-        Some(&state.socket),
-        input.credential,
-    ) else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    let Ok(identity) = client.identity().await else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    if !matches!(identity.role, Role::Reviewer | Role::Admin) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    let (Some(token), Some(csrf)) = (random(), random()) else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
-    {
-        let Ok(mut sessions) = state.sessions.lock() else {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        };
-        sessions.retain(|_, s| s.expires > Instant::now());
-        if sessions.len() >= 128 {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        }
-        sessions.insert(
-            token.clone(),
-            Session {
-                client,
-                csrf,
-                actor: identity.id,
-                expires: Instant::now() + Duration::from_secs(3600),
-            },
-        );
-    }
-    let mut response = Redirect::to("./").into_response();
-    let cookie = format!(
-        "tachikoma_session={token}; Path=/approval/; HttpOnly; SameSite=Strict; Max-Age=3600"
-    );
-    if let Ok(value) = HeaderValue::from_str(&cookie) {
-        response.headers_mut().insert("set-cookie", value);
-    }
-    response
 }
 #[derive(Deserialize)]
 struct ReviewForm {
@@ -431,49 +423,17 @@ async fn decide(
     Form(input): Form<ReviewForm>,
 ) -> Response {
     let Some(session) = session(&state, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return session_error();
     };
     if input.csrf != session.csrf {
-        return StatusCode::FORBIDDEN.into_response();
+        return session_error();
     }
-    match session.client.decide(&id,&DecideRequest{revision:input.revision,action_id:input.action_id}).await{Ok(_)=>Redirect::to("/approval/").into_response(),Err(_)=>(StatusCode::CONFLICT,page("Decision rejected","<p>The request may have expired, changed, or settled elsewhere. <a href='/approval/'>Return to the current inbox</a>.</p>",false)).into_response()}
+    match session.client.decide(&id,&DecideRequest{revision:input.revision,action_id:input.action_id}).await{Ok(_)=>Redirect::to("/approval/").into_response(),Err(_)=>(StatusCode::CONFLICT,page("Decision rejected","<p>The request may have expired, changed, or settled elsewhere. <a href='/approval/'>Return to the current inbox</a>.</p>",None)).into_response()}
 }
 #[derive(Deserialize)]
-struct Logout {
+struct CsrfForm {
     csrf: String,
 }
-async fn logout(
-    State(state): State<Web>,
-    headers: HeaderMap,
-    Form(input): Form<Logout>,
-) -> Response {
-    let Some(session) = session(&state, &headers) else {
-        return Redirect::to("./").into_response();
-    };
-    if input.csrf != session.csrf {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    if let Some(cookie) = headers
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| {
-            v.split(';')
-                .find_map(|v| v.trim().strip_prefix("tachikoma_session="))
-        })
-        && let Ok(mut sessions) = state.sessions.lock()
-    {
-        sessions.remove(cookie);
-    }
-    let mut response = Redirect::to("./").into_response();
-    response.headers_mut().insert(
-        "set-cookie",
-        HeaderValue::from_static(
-            "tachikoma_session=; Path=/approval/; HttpOnly; SameSite=Strict; Max-Age=0",
-        ),
-    );
-    response
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

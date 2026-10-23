@@ -10,6 +10,7 @@ name = "tachikomad"
 path = "src/main.rs"
 
 [dependencies]
+approval-client = { path = "../../crates/approval-client" }
 control-plane = { path = "../../crates/control-plane" }
 approval-web = { path = "../web" }
 anyhow = "1"

@@ -104,7 +104,9 @@ impl Principal {
         self.spec.role == Role::Admin
     }
     fn queue(&self, queue: &str) -> bool {
-        self.admin() || self.spec.queues.iter().any(|q| q == queue)
+        self.admin()
+            || (self.spec.id == "local-web" && self.spec.role == Role::Reviewer)
+            || self.spec.queues.iter().any(|q| q == queue)
     }
     fn read(&self, review: &Review) -> bool {
         self.spec.role != Role::Monitor
@@ -205,6 +207,21 @@ impl Store {
             .map_err(|_| anyhow::anyhow!("recover approval request deadlines"))?;
         Ok(store)
     }
+    /// Private, process-local reviewer capability for the loopback web frontend.
+    /// Never returned by the HTTP API or written into a browser or environment.
+    pub fn local_web_credential(&mut self) -> Result<String> {
+        let token = credential()?;
+        let spec = PrincipalSpec {
+            id: "local-web".into(),
+            role: Role::Reviewer,
+            queues: vec![],
+            service_kind: String::new(),
+            realm: String::new(),
+            actors: vec![],
+        };
+        self.db.execute("INSERT INTO principals(id,hash,spec,last_seen,detail) VALUES(?1,?2,?3,0,'') ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,spec=excluded.spec", params![spec.id,digest(token.as_bytes()),json(&spec)?])?;
+        Ok(token)
+    }
     fn init(db: Connection) -> anyhow::Result<Self> {
         db.busy_timeout(std::time::Duration::from_secs(3))?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA max_page_count=262144;
@@ -254,7 +271,7 @@ impl Store {
     }
     fn validate_principal(&self, spec: &PrincipalSpec) -> Result<()> {
         if !identifier(&spec.id)
-            || spec.id == "local-admin"
+            || matches!(spec.id.as_str(), "local-admin" | "local-web")
             || spec.queues.len() > 64
             || spec.actors.len() > 64
             || spec.actors.iter().any(|a| !identifier(a))
@@ -315,7 +332,7 @@ impl Store {
     }
     pub fn revoke(&mut self, actor: &Principal, identity: &str) -> Result<()> {
         actor.require(Role::Admin)?;
-        if identity == "local-admin" || !identifier(identity) {
+        if matches!(identity, "local-admin" | "local-web") || !identifier(identity) {
             return Err(Fault::bad());
         }
         let exists: bool = self.db.query_row(
@@ -702,7 +719,7 @@ impl Store {
         if !["pending", "history", "all"].contains(&state) {
             return Err(Fault::bad());
         }
-        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) ORDER BY seq DESC LIMIT 16")?.query_map(params![before,state,actor.admin(),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""}], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
+        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) ORDER BY seq DESC LIMIT 16")?.query_map(params![before,state,actor.admin() || (actor.spec.id == "local-web" && actor.spec.role == Role::Reviewer),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""}], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
         let next_before = (rows.len() == 16).then(|| rows.last().unwrap().0);
         let mut reviews = vec![];
         for (_, body) in rows {
@@ -2172,5 +2189,37 @@ mod tests {
         );
         assert!(store.decide(&monitor, &review.id, decide()).is_err());
         assert!(store.submit(&monitor, submission()).is_err());
+    }
+    #[test]
+    fn local_web_can_review_but_cannot_administer_and_old_keys_are_fenced() {
+        let (mut store, producer) = fixture();
+        let review = store.submit(&producer, submission()).unwrap();
+        let key = store.local_web_credential().unwrap();
+        let web = store.authenticate(&key).unwrap();
+        assert_eq!(
+            store.list(&web, i64::MAX, "pending").unwrap().reviews.len(),
+            1
+        );
+        assert!(
+            store
+                .claim(
+                    &web,
+                    ClaimJob {
+                        kind: "assessment".into()
+                    }
+                )
+                .is_err()
+        );
+        assert!(store.put_queue(&web, manifest()).is_err());
+        assert!(store.submit(&web, submission()).is_err());
+        assert!(store.enroll(&web, producer.spec.clone()).is_err());
+        assert!(store.enroll(&admin(), web.spec.clone()).is_err());
+        assert!(store.revoke(&admin(), "local-web").is_err());
+        assert!(store.rotate(&admin(), "local-web").is_err());
+        let result = store.decide(&web, &review.id, decide()).unwrap();
+        assert_eq!(result.decision.unwrap().actor, "local-web");
+        let next = store.local_web_credential().unwrap();
+        assert!(store.authenticate(&key).is_err());
+        assert!(store.authenticate(&next).is_ok());
     }
 }

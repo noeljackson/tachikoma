@@ -1346,7 +1346,10 @@ mod tests {
     use super::{Redactor, parse_local_cli_turn, provider, render_argument};
     use crate::config::{AiConfig, AiProviderConfig};
     use serde_json::json;
-    use tokio::{io::AsyncWriteExt, net::TcpListener};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
 
     #[test]
     fn event_arguments_are_rendered_without_shell_interpretation() {
@@ -1399,6 +1402,34 @@ mod tests {
         .to_string();
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.expect("accept mock API request");
+            // Read the complete HTTP request before responding. An early response
+            // races the client's request write and can cancel the connection.
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 4096];
+            loop {
+                let count = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("read mock API request");
+                assert!(count > 0 && request.len() + count <= 65536);
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(boundary) = request.windows(4).position(|v| v == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&request[..boundary]).expect("HTTP headers");
+                    let length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.split_once(':')
+                                .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                                .map(|(_, value)| {
+                                    value.trim().parse::<usize>().expect("content length")
+                                })
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= boundary + 4 + length {
+                        break;
+                    }
+                }
+            }
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response_body.len(),
@@ -1455,6 +1486,34 @@ mod tests {
         .to_string();
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.expect("accept mock API request");
+            // Read the complete HTTP request before responding. An early response
+            // races the client's request write and can cancel the connection.
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 4096];
+            loop {
+                let count = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("read mock API request");
+                assert!(count > 0 && request.len() + count <= 65536);
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(boundary) = request.windows(4).position(|v| v == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&request[..boundary]).expect("HTTP headers");
+                    let length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.split_once(':')
+                                .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                                .map(|(_, value)| {
+                                    value.trim().parse::<usize>().expect("content length")
+                                })
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= boundary + 4 + length {
+                        break;
+                    }
+                }
+            }
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response_body.len(),

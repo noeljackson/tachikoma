@@ -115,10 +115,18 @@ async fn main() -> Result<()> {
         .parent()
         .context("database needs a parent")?
         .join("approval");
-    let api = control_plane::Api::new(control_plane::Store::open(
+    let mut store = control_plane::Store::open(
         &approval.join("approval.sqlite3"),
         &approval.join("admin.token"),
-    )?);
+    )?;
+    let web_client = approval_client::Client::new(
+        "http://tachikoma.local",
+        Some(&socket),
+        store
+            .local_web_credential()
+            .map_err(|_| anyhow::anyhow!("initialize local web reviewer"))?,
+    )?;
+    let api = control_plane::Api::new(store);
     let listener = tokio::net::UnixListener::bind(&socket)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
@@ -126,7 +134,7 @@ async fn main() -> Result<()> {
     let web = Router::new()
         .route("/", get(|| async { Redirect::to("/approval/") }))
         .route("/health", get(|| async { "OK" }))
-        .nest("/approval/", approval_web::router(socket.clone()));
+        .nest("/approval/", approval_web::router(web_client));
     notify_ready()?;
     eprintln!("Tachikoma approval API ready; web {}", args.listen);
     let api_server = axum::serve(listener, api.router()).with_graceful_shutdown(shutdown());
