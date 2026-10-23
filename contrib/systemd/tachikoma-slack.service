@@ -7,7 +7,7 @@ Conflicts=snitchgate-slack.service
 [Service]
 Type=notify
 NotifyAccess=main
-ExecStart=/usr/bin/env -i HOME=%h XDG_RUNTIME_DIR=%t PATH=/usr/local/bin:/usr/bin CREDENTIALS_DIRECTORY=%d %h/.local/bin/tachikoma-slack --socket %t/tachikoma/tachikoma.sock --credential %d/approval.token --bot-token-file %d/SLACK_BOT_TOKEN --app-token-file %d/SLACK_APP_TOKEN
+ExecStart=/usr/bin/env -i HOME=%h XDG_RUNTIME_DIR=%t PATH=/usr/local/bin:/usr/bin CREDENTIALS_DIRECTORY=%d NOTIFY_SOCKET=${NOTIFY_SOCKET} %h/.local/bin/tachikoma-slack --socket %t/tachikoma/tachikoma.sock --credential %d/approval.token --bot-token-file %d/SLACK_BOT_TOKEN --app-token-file %d/SLACK_APP_TOKEN
 LoadCredential=approval.token:%h/.config/tachikoma/credentials/slack-transport.token
 LoadCredentialEncrypted=SLACK_BOT_TOKEN:%h/.config/tachikoma/credentials/SLACK_BOT_TOKEN.cred
 LoadCredentialEncrypted=SLACK_APP_TOKEN:%h/.config/tachikoma/credentials/SLACK_APP_TOKEN.cred

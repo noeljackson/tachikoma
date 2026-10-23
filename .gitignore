@@ -4,3 +4,9 @@
 *.sqlite3-wal
 
 __pycache__/
+
+# Runtime credentials belong outside the source tree.
+*.token
+*.cred
+.env
+.env.*
