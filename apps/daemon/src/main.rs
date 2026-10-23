@@ -37,6 +37,23 @@ fn private_parent(path: &Path) -> Result<()> {
     );
     Ok(())
 }
+fn notify_ready() -> Result<()> {
+    use std::os::{
+        linux::net::SocketAddrExt,
+        unix::net::{SocketAddr, UnixDatagram},
+    };
+    let Some(name) = std::env::var_os("NOTIFY_SOCKET") else {
+        return Ok(());
+    };
+    let bytes = name.as_encoded_bytes();
+    let address = if bytes.first() == Some(&b'@') {
+        SocketAddr::from_abstract_name(&bytes[1..])?
+    } else {
+        SocketAddr::from_pathname(Path::new(&name))?
+    };
+    UnixDatagram::unbound()?.send_to_addr(b"READY=1\nSTATUS=Approval API ready", &address)?;
+    Ok(())
+}
 async fn shutdown() {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .expect("install termination handler");
@@ -110,6 +127,7 @@ async fn main() -> Result<()> {
         .route("/", get(|| async { Redirect::to("/approval/") }))
         .route("/health", get(|| async { "OK" }))
         .nest("/approval/", approval_web::router(socket.clone()));
+    notify_ready()?;
     eprintln!("Tachikoma approval API ready; web {}", args.listen);
     let api_server = axum::serve(listener, api.router()).with_graceful_shutdown(shutdown());
     let web_server = axum::serve(web_listener, web).with_graceful_shutdown(shutdown());
