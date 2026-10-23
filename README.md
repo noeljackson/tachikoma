@@ -1,5 +1,13 @@
 # Tachikoma
 
+The proposed next direction is a **queue-based approval service** shared by
+[Snitchgate](https://github.com/noeljackson/snitchgate),
+[Registrygate](https://github.com/noeljackson/registrygate), and custom service
+adapters. It centralizes policy, AI assessment, human review and audit, while
+each producer retains enforcement. See the [queue control plane design](docs/queue-control-plane.md)
+for durable jobs, adapter contracts, scoped decisions and the migration plan.
+This proposal is not implemented by the prototype described below.
+
 Tachikoma is a local-first Rust control plane for turning security and
 operational observations into typed, reviewable proposals. It starts with
 OpenSnitch and Kubernetes command observations, but adapters do not execute
