@@ -46,10 +46,27 @@ pub async fn run(args: &Args) -> Result<()> {
             "invalid evaluation case"
         );
     }
+    let variants: Vec<&str> = if args.evaluation_variants.is_empty() {
+        vec!["baseline", "context", "staged"]
+    } else {
+        args.evaluation_variants
+            .iter()
+            .map(String::as_str)
+            .collect()
+    };
+    ensure!(
+        variants.len() <= 3
+            && variants
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == variants.len(),
+        "evaluation variants must be unique"
+    );
     let client = provider(&args.jev_endpoint, args.jev_socket.as_deref(), false)?;
     let mut rows = Vec::new();
     for case in cases {
-        for variant in ["baseline", "context", "staged"] {
+        for &variant in &variants {
             let mut current = profile.clone();
             if variant != "staged" {
                 current.questions.clear();
@@ -112,7 +129,7 @@ pub async fn run(args: &Args) -> Result<()> {
         }
     }
     let mut summaries = BTreeMap::new();
-    for variant in ["baseline", "context", "staged"] {
+    for &variant in &variants {
         let all: Vec<_> = rows.iter().filter(|r| r["variant"] == variant).collect();
         let valid: Vec<_> = all.iter().filter(|r| r.get("error").is_none()).collect();
         let labeled: Vec<_> = valid.iter().filter(|r| r["expected"].is_string()).collect();

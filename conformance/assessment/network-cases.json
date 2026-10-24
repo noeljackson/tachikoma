@@ -1,5 +1,5 @@
 {
-  "name": "network-context-regression-v1",
+  "name": "network-context-regression-v2",
   "limits": "Synthetic regression cases authored separately from reference examples. Not a held-out real-world malware benchmark. No executable malware or live destinations are contacted.",
   "cases": [
     {
@@ -754,6 +754,188 @@
           "lifecycle_event": null
         },
         "context_limits": "All process context is OpenSnitch-reported and unverified. No file-access, HTTP method, request payload, package identity, listener ownership or provenance verification is available."
+      }
+    },
+    {
+      "id": "cached-migration-worktree",
+      "expected": "development",
+      "tag": "development-workload",
+      "subject": {
+        "process": "/home/builder/.cache/build-archives/orders-migrate",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "127.0.0.1",
+        "host": "",
+        "port": 54331
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": "/workspace/worktrees/orders/db-branch",
+          "ancestors": [
+            {
+              "path": "/usr/bin/timeout"
+            },
+            {
+              "path": "/usr/bin/zsh"
+            },
+            {
+              "path": "/usr/lib/systemd/systemd"
+            }
+          ],
+          "argument_markers": [],
+          "lifecycle_event": null,
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
+      }
+    },
+    {
+      "id": "cached-project-agent",
+      "expected": "development",
+      "tag": "development-workload",
+      "subject": {
+        "process": "/home/builder/.cache/builds/catalog/catalog-agent",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "127.0.0.1",
+        "host": "",
+        "port": 49000
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": "/workspace/worktrees/catalog/feat",
+          "ancestors": [
+            {
+              "path": "/usr/bin/bash"
+            },
+            {
+              "path": "/usr/lib/systemd/systemd"
+            }
+          ],
+          "argument_markers": [],
+          "lifecycle_event": null,
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
+      }
+    },
+    {
+      "id": "go-cache-project-service",
+      "expected": "development",
+      "tag": "development-workload",
+      "subject": {
+        "process": "/home/builder/.cache/go-build/7f/service-tool",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "::1",
+        "host": "",
+        "port": 29102
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": "/workspace/checkouts/order-service",
+          "ancestors": [
+            {
+              "path": "/usr/bin/timeout"
+            },
+            {
+              "path": "/usr/bin/sh"
+            }
+          ],
+          "argument_markers": [],
+          "lifecycle_event": null,
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
+      }
+    },
+    {
+      "id": "cache-path-alone",
+      "expected": "unknown",
+      "tag": "missing-context",
+      "subject": {
+        "process": "/home/builder/.cache/build-archives/worker",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "192.0.2.80",
+        "host": "",
+        "port": 443
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": null,
+          "ancestors": [],
+          "argument_markers": [],
+          "lifecycle_event": null,
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
+      }
+    },
+    {
+      "id": "project-runtime-local-vault",
+      "expected": "unknown",
+      "tag": "missing-context",
+      "subject": {
+        "process": "/usr/bin/node",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "127.0.0.1",
+        "host": "",
+        "port": 8200
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": "/workspace/worktrees/orders/feature",
+          "ancestors": [
+            {
+              "path": "/usr/bin/zsh"
+            }
+          ],
+          "argument_markers": [],
+          "lifecycle_event": null,
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
+      }
+    },
+    {
+      "id": "lifecycle-scanner-cache-loopback",
+      "expected": "suspicious",
+      "tag": "shai-hulud-lookalike",
+      "subject": {
+        "process": "/home/builder/.cache/builds/trufflehog",
+        "pid": 1200,
+        "uid": 1000,
+        "protocol": "tcp",
+        "ip": "127.0.0.1",
+        "host": "",
+        "port": 31231
+      },
+      "evidence": {
+        "process_context": {
+          "working_directory": "/workspace/worktrees/orders/feature/node_modules/pkg",
+          "ancestors": [
+            {
+              "path": "/usr/bin/node"
+            },
+            {
+              "path": "/usr/bin/sh"
+            },
+            {
+              "path": "/usr/bin/bun"
+            }
+          ],
+          "argument_markers": [],
+          "lifecycle_event": "postinstall",
+          "checksums": {}
+        },
+        "context_limits": "OpenSnitch-reported metadata, not verified identity. No payload, file-access or listener attribution is available."
       }
     }
   ]

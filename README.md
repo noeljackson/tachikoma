@@ -69,6 +69,9 @@ not automatically replaced with another actionable request.
 Use `make install-cli` to update the terminal client separately. Restart an
 already open TUI to load the new keyboard controls.
 
+[Activity classification](docs/classification.md) separates likely workload from
+authorization, with model-only rubric comparisons.
+
 Optional [evidence sources and shadow policies](docs/evidence-policies.md) combine
 request facts, Jev judgments and correlated observations. Tetragon, Suricata and
 custom JSONL publishers are independent optional adapters. Source availability
