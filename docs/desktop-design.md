@@ -4,14 +4,18 @@ The desktop presents decisions across queues and services. The operating system
 window title and launcher use `tachikoma`; the interface has no brand banner.
 Service-specific subject details and permission controls appear in the inspector.
 One list combines pending and historical decisions with independent filter pills.
-The sidebar ends with Settings, which contains appearance and source/service status.
-There is no global navigation or appearance toolbar.
+The list header contains a multi-select queue dropdown and a compact Settings
+button. Settings contains appearance and source/service status. There is no
+sidebar or global navigation/appearance toolbar. The dropdown stays open while
+selecting queues, supports all/none and closes with Done, Escape or an outside
+click. Explicit selections exclude newly added queues until selected; All queues
+includes them automatically.
 
 ## Source and tokens
 
 [Radix Colors](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale)
 provides the light/dark slate, blue, green, red and amber scales.
-`apps/desktop/src/design.rs` maps them into semantic roles: canvas, panel, sidebar,
+`apps/desktop/src/design.rs` maps them into semantic roles: canvas, panel,
 control, hover, selection, border, text, muted text, focus and status colors.
 Views use these roles rather than hard-coded palette values. Color never carries
 a decision's meaning alone: labels and icons accompany status and actions.

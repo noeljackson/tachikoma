@@ -80,8 +80,9 @@ Run `tachikoma-gui` or open **tachikoma** from the desktop launcher. The
 private reviewer identity, the pinned upstream GPUI dependency and dependency review.
 The native interface opens without a sign-in form and has queues, one decision
 list with Pending/History filter pills, classifications, evidence, rule traces,
-investigations and scoped approval controls. Sidebar Settings contains sources,
-services and System/Light/Dark appearance. Controls share aligned icons and text. The previous browser interface requires `--legacy-web`.
+investigations and scoped approval controls. A multi-select queue dropdown and
+Settings button sit above the list. Settings contains sources, services and
+System/Light/Dark appearance. Controls share aligned icons and text. The previous browser interface requires `--legacy-web`.
 
 To try without installing binaries:
 

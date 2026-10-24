@@ -4,8 +4,12 @@ Read `docs/desktop-design.md` before changing layout or components.
 
 - Treat this as a decision system across services. Keep one chronological list;
   Pending and History are independent filters, not separate navigation pages.
-- Keep settings at the bottom of the sidebar. Appearance and sources/services
-  belong there. Avoid adding a global toolbar or app-name banner.
+- Keep the layout to a decision list and inspector, with no sidebar. Queues are
+  a multi-select dropdown in the list header, with Settings beside it. Appearance
+  and sources/services belong in Settings. Avoid a global toolbar or name banner.
+- Queue filters must allow multiple selections and explicitly distinguish all
+  from none. Keep the dropdown open while toggling choices; support keyboard
+  navigation, Escape/Done and outside-click dismissal.
 - Compose controls from `components.rs`. Every button has a fixed height,
   horizontal flex layout and `items_center`; icons and text share a vertical
   center. Set one text line height and avoid vertical padding that changes the

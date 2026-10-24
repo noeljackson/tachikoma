@@ -83,7 +83,6 @@ pub enum Mode {
 pub struct Colors {
     pub canvas: u32,
     pub panel: u32,
-    pub sidebar: u32,
     pub control: u32,
     pub hover: u32,
     pub selected: u32,
@@ -136,7 +135,6 @@ impl Colors {
             } else {
                 color(&palette.slate, 2)
             },
-            sidebar: color(&palette.slate, 2),
             control: color(&palette.slate, 3),
             hover: color(&palette.slate, 4),
             selected: color(&palette.blue, 4),
@@ -168,7 +166,7 @@ pub struct Metrics {
     pub control_height: f32,
     pub line_height: f32,
     pub filter_height: f32,
-    pub sidebar_width: f32,
+    pub menu_height: f32,
     pub list_width: f32,
     pub icon: f32,
 }
@@ -182,7 +180,7 @@ pub const METRICS: Metrics = Metrics {
     control_height: 32.,
     line_height: 20.,
     filter_height: 28.,
-    sidebar_width: 216.,
+    menu_height: 320.,
     list_width: 440.,
     icon: 16.,
 };
@@ -254,7 +252,7 @@ mod tests {
             let colors = Colors::new(mode);
             for (foreground, background) in [
                 (colors.text, colors.canvas),
-                (colors.muted, colors.sidebar),
+                (colors.muted, colors.panel),
                 (colors.text, colors.panel),
                 (colors.selected_text, colors.selected),
                 (colors.accent, colors.panel),

@@ -1,5 +1,8 @@
 use approval_protocol::*;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::BTreeSet,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -15,7 +18,6 @@ pub enum Detail {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
-    Queues,
     Requests,
     Details,
 }
@@ -43,7 +45,7 @@ pub struct State {
     pub show_history: bool,
     pub detail: Detail,
     pub pane: Pane,
-    pub queue: Option<String>,
+    pub queue_filter: Option<BTreeSet<String>>,
     pub selected: Option<String>,
     pub connected: bool,
     pub busy: bool,
@@ -62,7 +64,7 @@ impl Default for State {
             show_history: true,
             detail: Detail::Overview,
             pane: Pane::Requests,
-            queue: None,
+            queue_filter: None,
             selected: None,
             connected: false,
             busy: false,
@@ -94,10 +96,7 @@ impl State {
                     self.show_pending
                 } else {
                     self.show_history
-                }) && self
-                    .queue
-                    .as_ref()
-                    .is_none_or(|queue| queue == &review.request.queue)
+                }) && self.includes_queue(&review.request.queue)
                     && (filter.is_empty()
                         || format!(
                             "{} {} {} {}",
@@ -116,6 +115,23 @@ impl State {
                 .then_with(|| a.id.cmp(&b.id))
         });
         rows
+    }
+    pub fn includes_queue(&self, id: &str) -> bool {
+        self.queue_filter
+            .as_ref()
+            .is_none_or(|queues| queues.contains(id))
+    }
+    pub fn toggle_queue(&mut self, id: &str) {
+        let queues = self.queue_filter.get_or_insert_with(|| {
+            self.snapshot
+                .queues
+                .iter()
+                .map(|queue| queue.manifest.id.clone())
+                .collect()
+        });
+        if !queues.remove(id) {
+            queues.insert(id.to_owned());
+        }
     }
     pub fn visible_count(&self, pending: u64, history: u64) -> u64 {
         (if self.show_pending { pending } else { 0 }).saturating_add(if self.show_history {
@@ -207,6 +223,57 @@ pub fn text(value: &str) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn queue_multiselect_composes_with_status_and_distinguishes_all_from_none() {
+        let network = crate::backend::demo_review();
+        let mut operations = network.clone();
+        operations.id = "operations".into();
+        operations.request.queue = "operations".into();
+        operations.state = ReviewState::Allowed;
+        let manifest: QueueManifest = serde_json::from_str(include_str!(
+            "../../../contrib/adapters/snitchgate.queue.json"
+        ))
+        .unwrap();
+        let mut other = manifest.clone();
+        other.id = "operations".into();
+        let mut state = State {
+            snapshot: Snapshot {
+                queues: vec![
+                    QueueInfo {
+                        manifest,
+                        revision: 1,
+                        pending: 1,
+                        settled: 0,
+                    },
+                    QueueInfo {
+                        manifest: other,
+                        revision: 1,
+                        pending: 0,
+                        settled: 1,
+                    },
+                ],
+                pending: vec![network.clone()],
+                history: vec![operations],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(state.rows("").len(), 2);
+        state.toggle_queue(&network.request.queue);
+        assert_eq!(state.rows("").len(), 1);
+        assert_eq!(state.rows("")[0].request.queue, "operations");
+        assert!(!state.includes_queue("new-queue"));
+        state.toggle_queue("operations");
+        assert!(state.rows("").is_empty());
+        state.toggle_queue(&network.request.queue);
+        assert_eq!(state.rows("EXAMPLE.INVALID").len(), 1);
+        state.show_pending = false;
+        assert!(state.rows("").is_empty());
+        state.show_pending = true;
+        state.queue_filter = None;
+        assert!(state.includes_queue("new-queue"));
+        assert_eq!(state.rows("").len(), 2);
+    }
+    #[test]
     fn unified_feed_filters_search_and_queue_and_coalesces_lifecycle_updates() {
         let pending = crate::backend::demo_review();
         let mut settled = pending.clone();
@@ -253,7 +320,7 @@ mod tests {
         state.show_history = true;
         assert_eq!(state.rows("EXAMPLE.INVALID").len(), 2);
         assert!(state.rows("no-match").is_empty());
-        state.queue = Some("different.queue".into());
+        state.queue_filter = Some(["different.queue".into()].into());
         assert!(state.rows("").is_empty());
     }
     #[test]
@@ -306,7 +373,7 @@ mod tests {
         assert!(state.review().is_none());
         assert_eq!(state.selected.as_deref(), Some("new-selection"));
         assert!(state.rows("EXAMPLE.INVALID").len() == 1);
-        state.queue = Some("other.queue".into());
+        state.queue_filter = Some(["other.queue".into()].into());
         assert!(state.rows("").is_empty());
     }
 }

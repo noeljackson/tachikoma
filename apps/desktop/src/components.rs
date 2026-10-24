@@ -114,6 +114,43 @@ impl Ui {
             .h(px(self.metrics.filter_height))
             .rounded_full()
     }
+    pub fn queue_option(
+        self,
+        id: impl Into<ElementId>,
+        label: String,
+        checked: bool,
+        focused: bool,
+    ) -> Stateful<Div> {
+        self.control(id, self.colors.text)
+            .w_full()
+            .justify_start()
+            .gap(px(self.metrics.space[1]))
+            .bg(rgb(if focused {
+                self.colors.hover
+            } else {
+                self.colors.panel
+            }))
+            .border_color(rgb(if focused {
+                self.colors.focus
+            } else {
+                self.colors.panel
+            }))
+            .child(
+                div()
+                    .size(px(self.metrics.icon))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(self.metrics.control_radius / 2.))
+                    .border_1()
+                    .border_color(rgb(self.colors.control_border))
+                    .when(checked, |element| {
+                        element.child(Icon::Check.view(self.colors.accent, self.metrics.icon))
+                    }),
+            )
+            .child(div().flex_1().min_w_0().truncate().child(label))
+    }
     pub fn section(self, title: &str, body: String) -> Div {
         div()
             .py(px(self.metrics.space[2]))

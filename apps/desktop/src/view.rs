@@ -2,8 +2,9 @@ use crate::{backend::Backend, state::*};
 use crate::{components::Ui, design::Appearance, icons::Icon};
 use approval_protocol::*;
 use gpui::{
-    App, Context, Entity, FocusHandle, Focusable, KeyBinding, SharedString, Subscription, Window,
-    actions, div, prelude::*, px, rgb,
+    AnchoredPositionMode, App, Context, Entity, FocusHandle, Focusable, KeyBinding, MouseButton,
+    SharedString, Subscription, Window, actions, anchored, deferred, div, point, prelude::*, px,
+    rgb,
 };
 use gpui_elements::editable_text::{
     EditableTextState, StringStorage, TextChanged, actions::DEFAULT_INPUT_CONTEXT, text_area,
@@ -25,7 +26,10 @@ actions!(
         Search,
         Escape,
         Send,
-        CycleAppearance
+        CycleAppearance,
+        ToggleQueues,
+        ToggleQueueChoice,
+        CloseQueues
     ]
 );
 pub fn bind_keys(cx: &mut App) {
@@ -40,6 +44,11 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-2", ToggleHistory, Some("DecisionUI")),
         KeyBinding::new("ctrl-3", OpenSettings, Some("DecisionUI")),
         KeyBinding::new("ctrl-f", Search, Some("DecisionUI")),
+        KeyBinding::new("ctrl-k", ToggleQueues, Some("DecisionUI")),
+        KeyBinding::new("up", Previous, Some("QueueFilter")),
+        KeyBinding::new("down", Next, Some("QueueFilter")),
+        KeyBinding::new("space", ToggleQueueChoice, Some("QueueFilter")),
+        KeyBinding::new("enter", CloseQueues, Some("QueueFilter")),
         KeyBinding::new("escape", Escape, Some("DecisionUI")),
         // Escape leaves an editor through our navigation focus rather than clearing focus.
         KeyBinding::new("escape", Escape, Some(DEFAULT_INPUT_CONTEXT)),
@@ -54,8 +63,12 @@ pub struct Desktop {
     backend: Backend,
     runtime: Arc<tokio::runtime::Runtime>,
     navigation_focus: FocusHandle,
+    queue_focus: FocusHandle,
+    queues_open: bool,
+    queue_cursor: usize,
     detail_scroll: gpui::ScrollHandle,
     request_scroll: gpui::ScrollHandle,
+    queue_scroll: gpui::ScrollHandle,
     filter: Entity<EditableTextState>,
     draft: Entity<EditableTextState>,
     model: Entity<EditableTextState>,
@@ -106,8 +119,12 @@ impl Desktop {
             backend,
             runtime,
             navigation_focus,
+            queue_focus: cx.focus_handle(),
+            queues_open: false,
+            queue_cursor: 0,
             detail_scroll: gpui::ScrollHandle::new(),
             request_scroll: gpui::ScrollHandle::new(),
+            queue_scroll: gpui::ScrollHandle::new(),
             filter,
             draft,
             model,
@@ -168,6 +185,7 @@ impl Desktop {
         cx.notify();
     }
     fn page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
+        self.queues_open = false;
         self.state.page = page;
         self.state.confirmation = None;
         window.focus(&self.navigation_focus, cx);
@@ -181,6 +199,11 @@ impl Desktop {
         }
         self.state.page = Page::Decisions;
         self.state.confirmation = None;
+        self.queues_open = false;
+        self.reconcile_filter(cx);
+        window.focus(&self.navigation_focus, cx);
+    }
+    fn reconcile_filter(&mut self, cx: &mut Context<Self>) {
         let filter = self.filter.read(cx).as_str();
         if !self
             .state
@@ -203,29 +226,22 @@ impl Desktop {
             }
         }
         self.state.pane = Pane::Requests;
-        window.focus(&self.navigation_focus, cx);
         cx.notify();
     }
     fn navigate(&mut self, offset: isize, cx: &mut Context<Self>) {
-        if self.state.page == Page::Settings && self.state.pane != Pane::Queues {
+        if self.queues_open {
+            self.queue_cursor = self
+                .queue_cursor
+                .saturating_add_signed(offset)
+                .min(self.state.snapshot.queues.len());
+            self.queue_scroll.scroll_to_item(self.queue_cursor);
+            cx.notify();
             return;
         }
-        if self.state.pane == Pane::Queues {
-            let queues = &self.state.snapshot.queues;
-            let index = self
-                .state
-                .queue
-                .as_ref()
-                .and_then(|id| queues.iter().position(|queue| &queue.manifest.id == id))
-                .map(|index| index + 1)
-                .unwrap_or(0);
-            let next = index.saturating_add_signed(offset).min(queues.len());
-            let queue = next
-                .checked_sub(1)
-                .and_then(|index| queues.get(index))
-                .map(|queue| queue.manifest.id.clone());
-            self.select_queue(queue, cx);
-        } else if self.state.pane == Pane::Requests {
+        if self.state.page == Page::Settings {
+            return;
+        }
+        if self.state.pane == Pane::Requests {
             let rows = self.state.rows(self.filter.read(cx).as_str());
             let index = rows
                 .iter()
@@ -376,125 +392,171 @@ impl Desktop {
         .detach();
         cx.notify();
     }
-    fn select_queue(&mut self, queue: Option<String>, cx: &mut Context<Self>) {
-        if let Some(previous) = &self.state.selected {
-            self.drafts
-                .insert(previous.clone(), self.draft.read(cx).as_str().to_owned());
-        }
-        self.state.queue = queue;
-        self.state.page = Page::Decisions;
-        self.state.confirmation = None;
-        let id = self
-            .state
-            .rows(self.filter.read(cx).as_str())
-            .first()
-            .map(|review| review.id.clone());
-        if let Some(id) = id {
-            self.select(id, cx);
+    fn set_queues_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.queues_open = open;
+        if open {
+            self.state.page = Page::Decisions;
+            self.queue_cursor = 0;
+            window.focus(&self.queue_focus, cx);
         } else {
-            self.state.selected = None;
-            self.state.snapshot.selected = None;
-            self.state.snapshot.preview = None;
-            self.state.snapshot.conversation = None;
-            self.draft.update(cx, |draft, cx| draft.emplace("", cx));
+            window.focus(&self.navigation_focus, cx);
         }
-        self.state.pane = Pane::Queues;
         cx.notify();
     }
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn toggle_queue_choice(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index == 0 {
+            self.state.queue_filter = if self.state.queue_filter.is_none() {
+                Some(Default::default())
+            } else {
+                None
+            };
+        } else if let Some(queue) = self.state.snapshot.queues.get(index - 1) {
+            let id = queue.manifest.id.clone();
+            self.state.toggle_queue(&id);
+        }
+        self.state.confirmation = None;
+        self.reconcile_filter(cx);
+    }
+    fn queue_dropdown(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
         let metrics = self.ui.metrics;
-        let total = self
-            .state
-            .snapshot
-            .queues
-            .iter()
-            .map(|queue| self.state.visible_count(queue.pending, queue.settled))
-            .sum::<u64>();
-        let mut queues = vec![
+        let open = self.queues_open;
+        let label = match &self.state.queue_filter {
+            None => "All queues".to_owned(),
+            Some(queues) if queues.is_empty() => "No queues".to_owned(),
+            Some(queues) if queues.len() == 1 => self
+                .state
+                .snapshot
+                .queues
+                .iter()
+                .find(|q| queues.contains(&q.manifest.id))
+                .map(|q| text(&q.manifest.title))
+                .unwrap_or_else(|| "1 queue".into()),
+            Some(queues) => format!("{} queues", queues.len()),
+        };
+        let mut choices = vec![
             self.ui
-                .icon_button(
+                .queue_option(
                     "all-queues",
-                    Icon::Layers,
-                    "All queues",
-                    self.state.queue.is_none(),
+                    "All queues".into(),
+                    self.state.queue_filter.is_none(),
+                    self.queue_cursor == 0,
                 )
-                .w_full()
-                .justify_between()
-                .child(self.ui.caption(&total.to_string()))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.select_queue(None, cx);
-                    window.focus(&this.navigation_focus, cx);
-                }))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_queue_choice(0, cx)))
                 .into_any_element(),
         ];
-        for queue in &self.state.snapshot.queues {
-            let id = queue.manifest.id.clone();
-            let count = self.state.visible_count(queue.pending, queue.settled);
-            let icon = match queue.manifest.service_kind.as_str() {
-                "snitchgate" => Icon::Shield,
-                "kubernetesgate" => Icon::Boxes,
-                _ => Icon::Workflow,
-            };
-            queues.push(
+        for (index, queue) in self.state.snapshot.queues.iter().enumerate() {
+            let index = index + 1;
+            choices.push(
                 self.ui
-                    .icon_button(
-                        SharedString::from(format!("queue-{id}")),
-                        icon,
-                        &queue.manifest.title,
-                        self.state.queue.as_ref() == Some(&id),
+                    .queue_option(
+                        SharedString::from(format!("queue-{}", queue.manifest.id)),
+                        text(&queue.manifest.title),
+                        self.state.includes_queue(&queue.manifest.id),
+                        self.queue_cursor == index,
                     )
-                    .w_full()
-                    .justify_between()
-                    .child(self.ui.caption(&count.to_string()))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.select_queue(Some(id.clone()), cx);
-                        window.focus(&this.navigation_focus, cx);
+                    .child(
+                        self.ui
+                            .caption(
+                                &self
+                                    .state
+                                    .visible_count(queue.pending, queue.settled)
+                                    .to_string(),
+                            )
+                            .flex_shrink_0(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.queue_cursor = index;
+                        this.toggle_queue_choice(index, cx);
                     }))
                     .into_any_element(),
             );
         }
         div()
-            .w(px(metrics.sidebar_width))
-            .flex_shrink_0()
-            .h_full()
-            .bg(rgb(colors.sidebar))
-            .border_r_1()
-            .border_color(rgb(colors.border))
-            .p(px(metrics.space[2]))
-            .flex()
-            .flex_col()
-            .gap(px(metrics.space[1]))
-            .child(
-                div()
-                    .px(px(metrics.space[1]))
-                    .py(px(metrics.space[2]))
-                    .child(self.ui.caption("QUEUES")),
-            )
-            .child(
-                div()
-                    .id("queue-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .gap(px(metrics.space[1]))
-                    .children(queues),
-            )
+            .relative()
+            .flex_1()
+            .min_w_0()
             .child(
                 self.ui
-                    .icon_button(
-                        "settings",
-                        Icon::Settings,
-                        "Settings",
-                        self.state.page == Page::Settings,
-                    )
+                    .icon_button("queue-filter", Icon::Filter, &label, open)
                     .w_full()
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.page(Page::Settings, window, cx)),
+                    .justify_between()
+                    .child(Icon::Expand.view(colors.muted, metrics.icon))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            this.set_queues_open(!open, window, cx)
+                        }),
                     ),
             )
+            .when(open, |element| {
+                element.child(deferred(
+                    anchored()
+                        .position_mode(AnchoredPositionMode::Local)
+                        .position(point(px(0.), px(metrics.control_height + metrics.space[0])))
+                        .snap_to_window()
+                        .child(
+                            div()
+                                .id("queue-menu")
+                                .key_context("QueueFilter")
+                                .track_focus(&self.queue_focus)
+                                .w(px(metrics.list_width - metrics.space[2] * 2.))
+                                .p(px(metrics.space[1]))
+                                .rounded(px(metrics.panel_radius))
+                                .bg(rgb(colors.panel))
+                                .border_1()
+                                .border_color(rgb(colors.control_border))
+                                .shadow_lg()
+                                .on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                                    this.set_queues_open(false, window, cx)
+                                }))
+                                .child(
+                                    div()
+                                        .px(px(metrics.space[1]))
+                                        .py(px(metrics.space[1]))
+                                        .child(self.ui.caption("QUEUES · SELECT MULTIPLE")),
+                                )
+                                .child(
+                                    div()
+                                        .id("queue-choices")
+                                        .track_scroll(&self.queue_scroll)
+                                        .max_h(px(metrics.menu_height))
+                                        .overflow_y_scroll()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(metrics.space[0]))
+                                        .children(choices),
+                                )
+                                .child(
+                                    div()
+                                        .mt(px(metrics.space[1]))
+                                        .pt(px(metrics.space[1]))
+                                        .border_t_1()
+                                        .border_color(rgb(colors.border))
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            self.ui
+                                                .button("clear-queues", "Clear", colors.muted)
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.state.queue_filter =
+                                                        Some(Default::default());
+                                                    this.state.confirmation = None;
+                                                    this.reconcile_filter(cx);
+                                                })),
+                                        )
+                                        .child(
+                                            self.ui
+                                                .button("done-queues", "Done", colors.text)
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.set_queues_open(false, window, cx)
+                                                })),
+                                        ),
+                                ),
+                        ),
+                ))
+            })
     }
     fn decision_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
@@ -633,6 +695,11 @@ impl Desktop {
                     )
                     .child(self.ui.caption(&format!("{count}"))),
             )
+            .child(div().px(px(metrics.space[2])).pb(px(metrics.space[1]))
+                .flex().items_center().gap(px(metrics.space[1]))
+                .child(self.queue_dropdown(cx))
+                .child(self.ui.icon_button("settings", Icon::Settings, "Settings", false)
+                    .on_click(cx.listener(|this, _, window, cx| this.page(Page::Settings, window, cx)))))
             .child(
                 div()
                     .px(px(metrics.space[2]))
@@ -657,9 +724,9 @@ impl Desktop {
             .child(
                 div().px(px(metrics.space[2])).pb(px(metrics.space[2]))
                     .flex().items_center().gap(px(metrics.space[1]))
-                    .child(self.ui.pill("pending-filter", format!("Pending  {}", self.state.snapshot.queues.iter().filter(|q| self.state.queue.as_ref().is_none_or(|id| id == &q.manifest.id)).map(|q| q.pending).sum::<u64>()), self.state.show_pending)
+                    .child(self.ui.pill("pending-filter", format!("Pending  {}", self.state.snapshot.queues.iter().filter(|q| self.state.includes_queue(&q.manifest.id)).map(|q| q.pending).sum::<u64>()), self.state.show_pending)
                         .on_click(cx.listener(|this, _, window, cx| this.toggle_filter(true, window, cx))))
-                    .child(self.ui.pill("history-filter", format!("History  {}", self.state.snapshot.queues.iter().filter(|q| self.state.queue.as_ref().is_none_or(|id| id == &q.manifest.id)).map(|q| q.settled).sum::<u64>()), self.state.show_history)
+                    .child(self.ui.pill("history-filter", format!("History  {}", self.state.snapshot.queues.iter().filter(|q| self.state.includes_queue(&q.manifest.id)).map(|q| q.settled).sum::<u64>()), self.state.show_history)
                         .on_click(cx.listener(|this, _, window, cx| this.toggle_filter(false, window, cx))))
             )
             .child(
@@ -688,7 +755,9 @@ impl Desktop {
                                 .text_size(px(metrics.body))
                                 .text_color(rgb(colors.muted))
                                 .child(if self.state.connected {
-                                    if !self.state.show_pending && !self.state.show_history {
+                                    if self.state.queue_filter.as_ref().is_some_and(|queues| queues.is_empty()) {
+                                        "No queues selected. Choose queues from the filter."
+                                    } else if !self.state.show_pending && !self.state.show_history {
                                         "Both filters are off. Enable Pending or History to show decisions."
                                     } else {
                                         "No matching decisions. New requests appear automatically."
@@ -1409,15 +1478,29 @@ impl Render for Desktop {
                 this.page(Page::Settings, window, cx)
             }))
             .on_action(cx.listener(|this, _: &Search, window, cx| {
+                this.queues_open = false;
                 this.state.page = Page::Decisions;
                 window.focus(&this.filter.read(cx).focus_handle(cx), cx);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                if this.queues_open {
+                    this.set_queues_open(false, window, cx);
+                    return;
+                }
                 this.state.confirmation = None;
                 this.state.page = Page::Decisions;
                 window.focus(&this.navigation_focus, cx);
                 cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToggleQueues, window, cx| {
+                this.set_queues_open(!this.queues_open, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleQueueChoice, _, cx| {
+                this.toggle_queue_choice(this.queue_cursor, cx)
+            }))
+            .on_action(cx.listener(|this, _: &CloseQueues, window, cx| {
+                this.set_queues_open(false, window, cx)
             }))
             .on_action(cx.listener(|this, _: &Send, _, cx| this.send(cx)))
             .on_action(cx.listener(|this, _: &CycleAppearance, window, cx| {
@@ -1433,20 +1516,19 @@ impl Render for Desktop {
                     .on_action(cx.listener(|this, _: &Next, _, cx| this.navigate(1, cx)))
                     .on_action(cx.listener(|this, _: &Previous, _, cx| this.navigate(-1, cx)))
                     .on_action(cx.listener(|this, _: &FocusLeft, _, cx| {
-                        this.state.pane = match this.state.pane {
-                            Pane::Details => Pane::Requests,
-                            _ => Pane::Queues,
-                        };
+                        if this.queues_open {
+                            return;
+                        }
+                        this.state.pane = Pane::Requests;
                         cx.notify();
                     }))
                     .on_action(cx.listener(|this, _: &FocusRight, _, cx| {
-                        this.state.pane = match this.state.pane {
-                            Pane::Queues => Pane::Requests,
-                            _ => Pane::Details,
-                        };
+                        if this.queues_open {
+                            return;
+                        }
+                        this.state.pane = Pane::Details;
                         cx.notify();
                     }))
-                    .child(self.sidebar(cx))
                     .when(self.state.page == Page::Settings, |element| {
                         element.child(self.settings(cx))
                     })

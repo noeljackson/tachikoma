@@ -19,13 +19,16 @@ beside its database. The default client reads it from the XDG state directory;
 is a reserved local reviewer, cannot enroll principals, edit queues or claim
 worker jobs, and is never put in arguments, logs or the environment.
 
-The left pane selects queues across services. The middle pane has one
-chronological list of decisions and subjects. Compact Pending and History pills
+The interface has a chronological decision list and an inspector. Use the queue
+dropdown above the list to select multiple queues across services. It stays open
+while you select, supports All queues and Clear, and closes with Done, Escape or
+an outside click. Ctrl+K opens it; Up/Down moves, Space toggles, and Enter closes.
+All queues includes future queues; an explicit selection includes only chosen IDs. Compact Pending and History pills
 independently include or hide each state; both start enabled. A request keeps its
 identity when it settles, without duplicate rows. The inspector has Overview,
 Evidence, Policy and Investigate tabs.
 
-Settings, at the bottom of the sidebar, contains appearance, producer heartbeats
+Settings, beside the queue dropdown, contains appearance, producer heartbeats
 and optional sensor readers with their coverage and stale status. Missing
 observations do not establish safety. Policy previews explain recommendations
 and cannot approve requests.

@@ -112,14 +112,36 @@ fn demo_snapshot() -> Snapshot {
         "../../../contrib/adapters/snitchgate.queue.json"
     ))
     .expect("checked example queue");
+    let mut other_manifest = manifest.clone();
+    other_manifest.id = "demo.operations".into();
+    other_manifest.title = "Operations".into();
+    other_manifest.service_kind = "example".into();
+    let mut other = review.clone();
+    other.id = "demo-operations-request".into();
+    other.request.queue = other_manifest.id.clone();
+    other.request.schema_id = "example.operation.v1".into();
+    other.request.subject = serde_json::json!({"service":"build","target":"staging"});
+    other.request.summary = "Deploy build to staging".into();
+    other.state = ReviewState::Allowed;
+    other.created_at_ms -= 60_000;
+    other.assessment = None;
     Snapshot {
-        queues: vec![QueueInfo {
-            manifest,
-            revision: 1,
-            pending: 1,
-            settled: 0,
-        }],
+        queues: vec![
+            QueueInfo {
+                manifest,
+                revision: 1,
+                pending: 1,
+                settled: 0,
+            },
+            QueueInfo {
+                manifest: other_manifest,
+                revision: 1,
+                pending: 0,
+                settled: 1,
+            },
+        ],
         pending: vec![review.clone()],
+        history: vec![other],
         selected: Some(review),
         ..Default::default()
     }
