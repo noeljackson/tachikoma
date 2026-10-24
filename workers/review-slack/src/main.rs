@@ -1,5 +1,7 @@
 //! Generic Slack transport. Approval authority and durable delivery records live in Tachikoma.
 mod notify;
+mod presentation;
+use presentation::card;
 mod socket;
 use anyhow::{Context, Result, anyhow, ensure};
 use approval_client::Client;
@@ -152,89 +154,6 @@ fn secret(path: Option<PathBuf>, name: &str) -> Result<String> {
 }
 fn clipped(value: &str, limit: usize) -> String {
     display_text(value).chars().take(limit).collect()
-}
-fn card(delivery: &Delivery) -> Value {
-    let review = &delivery.review;
-    let active = review.state == ReviewState::Pending && review.expires_at_ms > epoch_ms();
-    let assessment = review
-        .assessment
-        .as_ref()
-        .map(|a| {
-            format!(
-                "{} — {}\nJev: {} / LLM: {}\n{}",
-                a.category,
-                a.confidence
-                    .map(|c| format!("{:.1}% confidence", 100.0 * c))
-                    .unwrap_or_else(|| "confidence unavailable".into()),
-                a.jev_model,
-                a.llm_model,
-                format_args!(
-                    "{}\n{}",
-                    a.judgments
-                        .iter()
-                        .filter(|(id, _)| id.as_str() != "category")
-                        .map(|(id, j)| format!(
-                            "{}: {} ({:.0}%)",
-                            id,
-                            j.choice,
-                            j.confidence * 100.0
-                        ))
-                        .collect::<Vec<_>>()
-                        .join(" · "),
-                    a.rationale
-                )
-            )
-        })
-        .unwrap_or_else(|| {
-            "Classification pending or not requested. Human review remains required.".into()
-        });
-    let outcome = review
-        .decision
-        .as_ref()
-        .map(|d| {
-            format!(
-                "Decision: {} by {}\nProducer outcome: {}",
-                d.action.label,
-                d.actor,
-                review
-                    .receipt
-                    .as_ref()
-                    .map(|r| format!("{:?}: {}", r.state, r.reason))
-                    .unwrap_or_else(|| "not reported".into())
-            )
-        })
-        .unwrap_or_else(|| format!("Deadline: {} (UTC epoch ms)", review.expires_at_ms));
-    let mut blocks = vec![
-        json!({"type":"header","text":{"type":"plain_text","text":clipped(&format!("{} / {}",review.service_kind,review.request.queue),140)}}),
-        json!({"type":"section","text":{"type":"plain_text","text":clipped(&review.request.summary,2900)}}),
-        json!({"type":"section","text":{"type":"plain_text","text":clipped(&format!("{}\n{}",review.request.subject,review.request.evidence),2900)}}),
-        json!({"type":"section","text":{"type":"plain_text","text":clipped(&assessment,2900)}}),
-        json!({"type":"section","text":{"type":"plain_text","text":clipped(&outcome,2900)}}),
-    ];
-    if active {
-        for action in &review.actions {
-            let detail = if visible_action(action) {
-                format!(
-                    "{} — {:?}\nExact scope: {}",
-                    action.label, action.effect, action.scope
-                )
-            } else {
-                format!(
-                    "{}: scope too large for a Slack card. Inspect and decide in the central TUI or web view.",
-                    action.label
-                )
-            };
-            blocks.push(
-                json!({"type":"section","text":{"type":"plain_text","text":clipped(&detail,2900)}}),
-            );
-        }
-        // Slack requires action_id to be unique within its containing actions block.
-        let elements=review.actions.iter().enumerate().filter(|(_,a)| visible_action(a)).map(|(index,action)|json!({"type":"button","text":{"type":"plain_text","text":clipped(&action.label,70)},"action_id":format!("tachikoma_decide_{index}"),"value":json!({"delivery":delivery.id,"nonce":delivery.nonce,"action":action.id}).to_string()})).collect::<Vec<_>>();
-        if !elements.is_empty() {
-            blocks.push(json!({"type":"actions","elements":elements}));
-        }
-    }
-    json!({"text":format!("Tachikoma review {}",review.id),"blocks":blocks,"mrkdwn":false,"parse":"none","unfurl_links":false,"unfurl_media":false})
 }
 fn visible_action(action: &ReviewAction) -> bool {
     action.scope.to_string().len() <= 1800
@@ -518,8 +437,7 @@ mod tests {
             scope: json!({"value":"a".repeat(1900)})
         }));
     }
-    #[test]
-    fn card_actions_have_unique_slack_identifiers_and_show_exact_scopes() {
+    fn sample_delivery() -> Delivery {
         let actions = vec![
             ReviewAction {
                 id: "allow".into(),
@@ -564,7 +482,7 @@ mod tests {
             assessment: None,
             receipt: None,
         };
-        let delivery = Delivery {
+        Delivery {
             id: "fixture".into(),
             realm: "slack:T1".into(),
             channel: "C1".into(),
@@ -572,7 +490,11 @@ mod tests {
             nonce: "nonce".into(),
             review,
             status: "newly_reserved".into(),
-        };
+        }
+    }
+    #[test]
+    fn card_actions_have_unique_slack_identifiers_and_show_exact_scopes() {
+        let delivery = sample_delivery();
         let body = card(&delivery);
         let buttons = body["blocks"]
             .as_array()
@@ -591,7 +513,77 @@ mod tests {
         assert!(body["blocks"].as_array().unwrap().iter().any(|b| {
             b["text"]["text"]
                 .as_str()
-                .is_some_and(|s| s.contains("Exact scope: {\"duration\":\"once\"}"))
+                .is_some_and(|s| s.contains("This connection only · once"))
         }));
+    }
+    #[test]
+    fn cards_escape_hostile_metadata_keep_opaque_scopes_and_remove_expired_buttons() {
+        let mut delivery = sample_delivery();
+        delivery.review.request.subject = json!({"host":"<@everyone> `approve`", "port":443,"process":"/tmp/<https://evil.invalid|click>","ip":"127.0.0.1","protocol":"tcp","pid":42,"uid":1000});
+        delivery.review.request.evidence = json!({"url_hints":["https://example.invalid/file.js"], "private_blob":"MUST_NOT_DUMP_THIS"});
+        delivery.review.actions[0].scope = json!({"duration":"once","extra":"must be visible"});
+        let card = card(&delivery);
+        let blocks = card["blocks"].as_array().unwrap();
+        assert!(!card.to_string().contains("MUST_NOT_DUMP_THIS"));
+        assert!(blocks.iter().any(|block| {
+            block["text"]["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("must be visible"))
+        }));
+        for block in blocks {
+            let mut text_objects = vec![&block["text"]];
+            if let Some(fields) = block["fields"].as_array() {
+                text_objects.extend(fields);
+            }
+            if let Some(elements) = block["elements"].as_array() {
+                text_objects.extend(elements);
+            }
+            for value in text_objects {
+                if value["type"] == "mrkdwn" {
+                    let text = value["text"].as_str().unwrap();
+                    assert!(!text.contains("<@"));
+                    assert!(!text.contains("<https://evil"));
+                }
+            }
+        }
+        delivery.review.expires_at_ms = epoch_ms() - 1;
+        let expired = super::card(&delivery);
+        assert!(
+            !expired["blocks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|block| block["type"] == "actions")
+        );
+        assert!(
+            expired["text"]
+                .as_str()
+                .unwrap()
+                .contains("Request expired")
+        );
+        assert!(!expired.to_string().contains("Deny recorded"));
+    }
+    #[test]
+    fn largest_action_set_stays_within_slack_limits() {
+        let mut delivery = sample_delivery();
+        let mut action = delivery.review.actions[0].clone();
+        action.scope = json!({"opaque":"a".repeat(1700)});
+        delivery.review.actions = (0..16)
+            .map(|index| {
+                let mut action = action.clone();
+                action.id = format!("action-{index}");
+                action
+            })
+            .collect();
+        let card = card(&delivery);
+        assert!(card["blocks"].as_array().unwrap().len() <= 50);
+        for block in card["blocks"].as_array().unwrap() {
+            if let Some(text) = block["text"]["text"].as_str() {
+                assert!(text.chars().count() <= 3000);
+            }
+            if block["type"] == "actions" {
+                assert!(block["elements"].as_array().unwrap().len() <= 5);
+            }
+        }
     }
 }
