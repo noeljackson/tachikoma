@@ -119,3 +119,13 @@ other advisory and IOC checks, and expires on 2026-11-24. Revisit the GPUI/zbus
 migration before then. The scanner pin was advanced to
 `97df5883cf9a3de3d2c81693374f958badc02fc3` to support explicit reviewed exceptions
 and its offline coverage diagnostics; all advisory severities remain enabled.
+
+## Decisions made in the OpenSnitch popup
+
+The optional fallback relay publishes returned popup actions to the **OpenSnitch
+popup history** queue. They appear in History as **OpenSnitch reported allow**,
+**deny** or **reject**. Select this queue in the multi-select filter if needed.
+They are external observations, not editable or replayable tachikoma approvals.
+The inspector shows the captured connection and reported duration, with explicit
+limits on source scope, interaction and enforcement. Old expired central reviews
+are not changed into approvals by matching process names or destinations.

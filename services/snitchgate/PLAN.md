@@ -152,3 +152,9 @@ until-restart expiry, forever persistence/reload, and executable/UID boundaries.
 Workstation installation updates available choices, not host permissions; only an
 explicit review decision creates a rule. Existing curated policy remains the
 workstation's durable source of truth.
+
+Fallback GUI responses now have an independent durable relay/outbox and a scoped
+observation-only archive, so central outages do not silently lose future popup
+outcomes. The relay has no authority to settle central reviews. It distinguishes
+response history from traffic-rule hits and retains the wire protocol's limits:
+click versus GUI timeout and kernel enforcement are not acknowledged.

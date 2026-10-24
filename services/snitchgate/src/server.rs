@@ -108,6 +108,20 @@ pub async fn serve(listener: UnixListener, broker: Arc<Broker>) -> Result<()> {
 /// modern HTTP stacks correctly reject. A slash-free abstract socket name is
 /// compatible with the installed daemon without weakening HTTP validation.
 pub async fn serve_abstract(name: &str, broker: Arc<Broker>) -> Result<()> {
+    let incoming = abstract_incoming(name)?;
+    tonic::transport::Server::builder()
+        .concurrency_limit_per_connection(256)
+        .add_service(
+            UiServer::new(OpenSnitch { broker }).max_decoding_message_size(16 * 1024 * 1024),
+        )
+        .serve_with_incoming(incoming)
+        .await?;
+    Ok(())
+}
+
+pub fn abstract_incoming(
+    name: &str,
+) -> Result<impl Stream<Item = Result<tokio::net::UnixStream, std::io::Error>> + Send + 'static> {
     use futures_util::StreamExt;
     use std::os::linux::net::SocketAddrExt;
     anyhow::ensure!(
@@ -138,14 +152,7 @@ pub async fn serve_abstract(name: &str, broker: Arc<Broker>) -> Result<()> {
             _ => None,
         }
     });
-    tonic::transport::Server::builder()
-        .concurrency_limit_per_connection(256)
-        .add_service(
-            UiServer::new(OpenSnitch { broker }).max_decoding_message_size(16 * 1024 * 1024),
-        )
-        .serve_with_incoming(incoming)
-        .await?;
-    Ok(())
+    Ok(incoming)
 }
 
 pub async fn connect(

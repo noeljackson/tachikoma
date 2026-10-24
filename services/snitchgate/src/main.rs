@@ -22,6 +22,8 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
+    /// Forward fallback GUI prompts and synchronize observation-only outcome history.
+    PopupRelay(snitchgate::popup::Options),
     /// Classify live GUI events read-only, with a bounded budget and no firewall decisions.
     Observe(snitchgate::observe::Options),
     /// Run Slack approvals over Socket Mode (dry-run feedback unless --live).
@@ -169,6 +171,7 @@ async fn shutdown_signal() {
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
     match Cli::parse().command {
+        Commands::PopupRelay(args) => snitchgate::popup::run(args).await,
         Commands::Observe(args) => snitchgate::observe::run(args).await,
         Commands::Approvals(args) => snitchgate::slack::run(args).await,
         Commands::Benchmark(args) => snitchgate::benchmark::run(args).await,

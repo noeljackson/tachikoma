@@ -108,6 +108,26 @@ class ContractTests(unittest.TestCase):
         return self.child(["python3", str(ROOT / "examples/external-adapter/service.py"), "--socket", str(self.socket), "--credential", str(credential), "--state", str(state), *extra])
     def pending(self, queue):
         return until(lambda: next((r for r in self.admin.call("GET", "/requests")["reviews"] if r["request"]["queue"] == queue), None))
+    def test_popup_history_is_terminal_observation_and_never_central_permission(self):
+        queue=json.loads((ROOT/'contrib/adapters/opensnitch-popup.queue.json').read_text())
+        self.admin.call('POST','/queues',queue)
+        producer=external.API(self.socket,self.enroll('popup-history','producer',queue['id'],'snitchgate.popup'))
+        subject={'origin':'opensnitch-popup','process':'/usr/bin/example','pid':12,'uid':1000,'protocol':'tcp','ip':'127.0.0.1','host':'localhost','port':443,'result':'allow','duration':'once','observed_at_ms':int(time.time()*1000)}
+        request={'queue':queue['id'],'producer_request_id':'popup-event-000001','nonce':'popup-event-000001','idempotency_key':'popup-event-000001','schema_id':queue['schema_id'],'subject':subject,'evidence':{'authority':'External popup outcome, not permission'},'action_ids':['record'],'expires_at_ms':4102444800000,'summary':'OpenSnitch returned allow'}
+        review=producer.call('POST','/requests',request)
+        self.assertEqual(review['state'],'observed')
+        self.assertFalse(review['decision']['authoritative'])
+        self.assertEqual(review['decision']['action']['effect'],'observe')
+        self.assertEqual(producer.call('POST','/requests',request)['id'],review['id'])
+        self.assertEqual(producer.call('GET','/requests')['reviews'],[])
+        # External reporting authority cannot settle a live central request.
+        self.admin.call('POST','/queues',self.example_queue())
+        central=self.admin.call('POST','/requests',{'queue':'example.review','producer_request_id':'central-popup-test-01','nonce':'central-popup-test-01','idempotency_key':'central-popup-test-01','schema_id':'example.subject.v1','subject':{'target':'fixture'},'evidence':{},'action_ids':['allow-once'],'expires_at_ms':int(time.time()*1000)+60000,'summary':'Live central review'})
+        with self.assertRaisesRegex(RuntimeError,'HTTP 403'):
+            producer.call('POST',f"/requests/{central['id']}/decision",{'revision':1,'action_id':'allow-once'})
+        self.assertEqual(self.admin.call('GET',f"/requests/{central['id']}")['state'],'pending')
+        self.assertEqual(self.admin.call('GET',f"/requests/{review['id']}")['state'],'observed')
+
     def test_external_service_runs_without_workspace_imports_and_consumes_once(self):
         self.admin.call("POST", "/queues", self.example_queue())
         token = self.enroll("external", "producer", "example.review")

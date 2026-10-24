@@ -58,7 +58,8 @@ def namespace(root, uid, gid):
     subprocess.run(["ip", "link", "set", "lo", "up"], check=True)
     rules = root / "rules"
     rules.mkdir(mode=0o700)
-    abstract_name = f"snitchgate-kernel-{os.getpid()}"
+    abstract_name = f"snitchgate-popup-kernel-{os.getpid()}"
+    broker_abstract = f"snitchgate-kernel-{os.getpid()}"
     config = {
         "Server": {"Address": "unix:@snitchgate-unavailable-" + str(os.getpid()),
                    "Authentication": {"Type": "simple"}, "LogFile": str(root / "daemon.log")},
@@ -98,9 +99,11 @@ def namespace(root, uid, gid):
     with (root / "daemon-output.log").open("w") as output:
         broker = subprocess.Popen([str(BIN), "serve", "--config", str(root / "broker.toml"),
                                    "--runtime-dir", str(root / "runtime"), "--state-dir", str(root / "state"),
-                                   "--manual", "--abstract-name", abstract_name],
+                                   "--manual", "--abstract-name", broker_abstract],
                                   user=uid, group=gid, stdin=subprocess.DEVNULL, stdout=output, stderr=output)
         wait_for((root / "runtime/control.sock").exists)
+        relay = subprocess.Popen([str(BIN),"popup-relay","--listen-socket",str(root/"popup-runtime/relay.sock"),"--abstract-name",abstract_name,"--gui-socket",str(root/"runtime/opensnitch.sock"),"--approval-socket",str(root/"offline-api.sock"),"--state-dir",str(root/"popup-state")], user=uid,group=gid,stdin=subprocess.DEVNULL,stdout=output,stderr=output)
+        wait_for((root/"popup-runtime/relay.sock").exists)
         daemon = subprocess.Popen(["/usr/bin/opensnitchd", "-config-file", str(path),
                                    "-rules-path", str(rules), "-workers", "2"],
                                   stdin=subprocess.DEVNULL, stdout=output, stderr=output)
@@ -146,6 +149,8 @@ def namespace(root, uid, gid):
                     daemon.wait()
                 fixture.shutdown()
                 second_fixture.shutdown()
+                relay.terminate()
+                relay.wait(timeout=5)
                 broker.terminate()
                 broker.wait(timeout=5)
                 for directory, folders, files in os.walk(root):
@@ -154,11 +159,14 @@ def namespace(root, uid, gid):
 
 
 def main():
+    global BIN
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path, default=BIN)
     parser.add_argument("--namespace", type=Path)
     parser.add_argument("--uid", type=int)
     parser.add_argument("--gid", type=int)
     args = parser.parse_args()
+    BIN=args.binary.resolve()
     if args.namespace:
         namespace(args.namespace, args.uid, args.gid)
         return
@@ -174,7 +182,7 @@ def main():
         try:
             path = root / "runtime/control.sock"
             worker = subprocess.Popen(["sudo", "-n", "unshare", "--net", "--mount", "--propagation", "private",
-                                       sys.executable, "-I", str(Path(__file__).resolve()), "--namespace", str(root),
+                                       sys.executable, "-I", str(Path(__file__).resolve()), "--binary", str(BIN), "--namespace", str(root),
                                        "--uid", str(os.getuid()), "--gid", str(os.getgid())],
                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log)
             wait_for((root / "namespace.json").exists)
@@ -235,6 +243,14 @@ def main():
                 stdout,_=process.communicate(timeout=12)
                 assert process.returncode!=0 and not stdout, "permanent executable rule crossed a user or path boundary"
             print("isolated kernel enforcement: executable any-destination, until-restart expiry, permanent reload, UID and path boundaries passed",flush=True)
+            import sqlite3
+            with sqlite3.connect((root/"popup-state/popup.sqlite3").as_uri()+"?mode=ro",uri=True) as archive:
+                events=[json.loads(row[0]) for row in archive.execute("SELECT body FROM popup_outbox")]
+            assert len(events)>=7, "popup responses were not durably queued during central outage"
+            assert {event['subject']['result'] for event in events}>={'allow','deny'}
+            assert {event['subject']['duration'] for event in events}>={'once','until restart','always'}
+            assert all(event['action_ids']==['record'] and 'process_args' not in event['subject'] for event in events)
+            print("isolated popup relay: returned rules enforced and external outcomes queued while central service is offline",flush=True)
 
         except BaseException:
             print(f"Private smoke evidence retained at {root}", file=sys.stderr)

@@ -394,3 +394,31 @@ curl, and Noelarchy's trial helper. It creates fresh network/mount namespaces,
 uses only loopback fixtures and isolated rules/config, verifies allow/deny/timeout
 and hot rollback, and never connects to the host daemon's socket or changes its
 network/config. Private evidence is kept under the user runtime directory.
+
+## Fallback popup history
+
+`snitchgate popup-relay` forwards local GUI RPCs through an owner-checked Unix
+socket and records bounded, sanitized AskRule responses before returning them.
+It forwards the GUI's rule intact, including once decisions. It does not record
+ordinary rule-hit/traffic statistics as new approvals. The Subscribe handshake
+registers the GUI node without applying a GUI default-action/config rewrite.
+
+The private SQLite outbox survives central outages and retries stable request
+IDs. `contrib/adapters/opensnitch-popup.queue.json` is a separate observation-only
+archive: its only policy action is Observe, never authoritative permission.
+Provision a producer scoped only to that queue. Popup history cannot settle or
+reopen a live central request. Models and Slack transports are not involved.
+
+Raw arguments, environment, rule names, rule operators, descriptions and incoming
+daemon configs are never persisted by the relay. A source rule name can itself
+contain command arguments. The exported subject describes the captured
+connection and returned action/duration, not the complete rule scope. The wire
+protocol does not identify explicit clicks versus GUI timeout actions, and a
+returned GUI rule does not acknowledge kernel enforcement. Audit failures fail
+closed; unreported history remains queued until the central API accepts it.
+
+On Noelarchy, `make -f config/tachikoma/Makefile tachikoma-popup-install` provisions
+this archive and routes guarded fallback through the relay. If the relay itself
+fails, the guard restores direct GUI routing; that interval has a recording gap.
+Old GUI traffic records cannot reliably reconstruct explicit popup choices and
+are not imported as approvals. Existing expired central requests remain expired.

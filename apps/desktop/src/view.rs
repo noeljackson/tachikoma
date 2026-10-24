@@ -911,7 +911,9 @@ impl Desktop {
                                 .into_any_element(),
                         );
                     }
-                    if let Some(assessment) = &review.assessment {
+                    if review.request.schema_id == "network.popup-result.v1" {
+                        content.insert(2, self.ui.section("OpenSnitch popup outcome", format!("Reported result: {} · duration: {}\nRecorded outside tachikoma. The protocol does not distinguish a click from the GUI timeout action.\nCaptured connection only; the full source rule scope stays in OpenSnitch. Kernel enforcement is not confirmed.",text(review.request.subject["result"].as_str().unwrap_or("unknown")),text(review.request.subject["duration"].as_str().unwrap_or("unknown")))).into_any_element());
+                    } else if let Some(assessment) = &review.assessment {
                         content.push(div().p(px(metrics.space[3])).rounded(px(metrics.panel_radius)).bg(rgb(colors.info_surface)).border_1().border_color(rgb(colors.border))
                             .child(self.ui.caption("ASSESSMENT"))
                             .child(div().mt(px(metrics.space[1])).text_size(px(metrics.title)).text_color(rgb(colors.warning)).child(format!("{}  ·  {}", text(&assessment.category).replace('_', " "), percent(assessment.confidence))))
@@ -923,7 +925,9 @@ impl Desktop {
                     } else {
                         content.push(self.ui.section("Classification", "Assessment pending or not requested. You can inspect evidence or start an investigation.".into()).into_any_element());
                     }
-                    if let Some(decision) = &review.decision {
+                    if let Some(decision) = &review.decision
+                        && review.request.schema_id != "network.popup-result.v1"
+                    {
                         content.push(
                             self.ui
                                 .section(
@@ -1588,6 +1592,17 @@ fn age(at: i64) -> String {
     }
 }
 fn status(review: &Review) -> String {
+    if review.state == ReviewState::Observed
+        && review.request.schema_id == "network.popup-result.v1"
+    {
+        return match review.request.subject["result"].as_str() {
+            Some("allow") => "OpenSnitch reported allow",
+            Some("deny") => "OpenSnitch reported deny",
+            Some("reject") => "OpenSnitch reported reject",
+            _ => "OpenSnitch popup response",
+        }
+        .into();
+    }
     if review.state == ReviewState::Pending && review.expires_at_ms <= now_ms() {
         return "Expired".into();
     }
