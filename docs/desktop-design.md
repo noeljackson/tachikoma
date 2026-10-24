@@ -3,6 +3,9 @@
 The desktop presents decisions across queues and services. The operating system
 window title and launcher use `tachikoma`; the interface has no brand banner.
 Service-specific subject details and permission controls appear in the inspector.
+One list combines pending and historical decisions with independent filter pills.
+The sidebar ends with Settings, which contains appearance and source/service status.
+There is no global navigation or appearance toolbar.
 
 ## Source and tokens
 
@@ -17,7 +20,9 @@ The shared metrics define a four-pixel spacing grid, typography, control height,
 radii, icon size and pane widths. `components.rs` owns captions, buttons,
 segmented choices, icon buttons and inspector sections. `view.rs` composes these
 components with queue and review data. This keeps appearance and geometry changes
-out of application logic.
+out of application logic. Every button uses a fixed-height flex row with centered
+content and a shared text line height; icon/text groups align on the same vertical
+center. Filter pills use the same component foundation at a smaller height.
 
 Appearance has three states: System, Light and Dark. System resolves GPUI's
 current window appearance and observes changes; an explicit selection remains

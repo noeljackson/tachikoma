@@ -3,9 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
-    Inbox,
-    History,
-    Health,
+    Decisions,
+    Settings,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Detail {
@@ -40,6 +39,8 @@ pub struct Snapshot {
 pub struct State {
     pub snapshot: Snapshot,
     pub page: Page,
+    pub show_pending: bool,
+    pub show_history: bool,
     pub detail: Detail,
     pub pane: Pane,
     pub queue: Option<String>,
@@ -56,7 +57,9 @@ impl Default for State {
     fn default() -> Self {
         Self {
             snapshot: Snapshot::default(),
-            page: Page::Inbox,
+            page: Page::Decisions,
+            show_pending: true,
+            show_history: true,
             detail: Detail::Overview,
             pane: Pane::Requests,
             queue: None,
@@ -73,16 +76,26 @@ impl Default for State {
 }
 impl State {
     pub fn rows(&self, filter: &str) -> Vec<&Review> {
-        let reviews = if self.page == Page::History {
-            &self.snapshot.history
-        } else {
-            &self.snapshot.pending
-        };
+        // Resolve lifecycle races between the two API reads before applying filters.
+        let mut latest = std::collections::BTreeMap::<&str, &Review>::new();
+        for review in self.snapshot.pending.iter().chain(&self.snapshot.history) {
+            if latest
+                .get(review.id.as_str())
+                .is_none_or(|old| review.revision >= old.revision)
+            {
+                latest.insert(&review.id, review);
+            }
+        }
         let filter = filter.to_lowercase();
-        reviews
-            .iter()
+        let mut rows: Vec<_> = latest
+            .into_values()
             .filter(|review| {
-                self.queue
+                (if review.state == ReviewState::Pending {
+                    self.show_pending
+                } else {
+                    self.show_history
+                }) && self
+                    .queue
                     .as_ref()
                     .is_none_or(|queue| queue == &review.request.queue)
                     && (filter.is_empty()
@@ -96,7 +109,20 @@ impl State {
                         .to_lowercase()
                         .contains(&filter))
             })
-            .collect()
+            .collect();
+        rows.sort_by(|a, b| {
+            b.created_at_ms
+                .cmp(&a.created_at_ms)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        rows
+    }
+    pub fn visible_count(&self, pending: u64, history: u64) -> u64 {
+        (if self.show_pending { pending } else { 0 }).saturating_add(if self.show_history {
+            history
+        } else {
+            0
+        })
     }
     pub fn application(review: &Review) -> &str {
         review.request.subject["process"]
@@ -108,15 +134,11 @@ impl State {
         let id = self.selected.as_deref()?;
         self.snapshot
             .selected
-            .as_ref()
+            .iter()
+            .chain(&self.snapshot.pending)
+            .chain(&self.snapshot.history)
             .filter(|review| review.id == id)
-            .or_else(|| {
-                self.snapshot
-                    .pending
-                    .iter()
-                    .chain(&self.snapshot.history)
-                    .find(|review| review.id == id)
-            })
+            .max_by_key(|review| (review.revision, review.state != ReviewState::Pending))
     }
     pub fn apply(&mut self, snapshot: Snapshot, target: Option<&str>) {
         let selected = self.snapshot.selected.take();
@@ -184,6 +206,56 @@ pub fn text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unified_feed_filters_search_and_queue_and_coalesces_lifecycle_updates() {
+        let pending = crate::backend::demo_review();
+        let mut settled = pending.clone();
+        settled.revision += 1;
+        settled.state = ReviewState::Allowed;
+        let mut older = pending.clone();
+        older.id = "older-history".into();
+        older.state = ReviewState::Denied;
+        older.created_at_ms -= 100;
+        let mut state = State {
+            snapshot: Snapshot {
+                pending: vec![pending.clone()],
+                history: vec![older],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(state.rows("").len(), 2);
+        assert_eq!(state.rows("")[0].id, pending.id);
+        state.show_history = false;
+        assert_eq!(state.rows("").len(), 1);
+        state.show_pending = false;
+        assert!(state.rows("").is_empty());
+        state.show_history = true;
+        assert_eq!(state.rows("")[0].id, "older-history");
+        state.show_pending = true;
+        state.snapshot.history.push(settled);
+        state.selected = Some(pending.id.clone());
+        state.connected = true;
+        assert_eq!(state.review().unwrap().state, ReviewState::Allowed);
+        assert!(!state.can_confirm(
+            &Confirmation {
+                review: pending.clone(),
+                action: pending.actions[0].clone()
+            },
+            0
+        ));
+        // The history read observed settlement after the pending read. Never
+        // display or approve an outdated pending copy, even with history hidden.
+        assert_eq!(state.rows("").len(), 2);
+        assert_eq!(state.rows("")[0].state, ReviewState::Allowed);
+        state.show_history = false;
+        assert!(state.rows("").is_empty());
+        state.show_history = true;
+        assert_eq!(state.rows("EXAMPLE.INVALID").len(), 2);
+        assert!(state.rows("no-match").is_empty());
+        state.queue = Some("different.queue".into());
+        assert!(state.rows("").is_empty());
+    }
     #[test]
     fn confirmation_is_bound_to_selection_revision_scope_expiry_and_connection() {
         let review = crate::backend::demo_review();

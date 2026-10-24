@@ -19,21 +19,26 @@ beside its database. The default client reads it from the XDG state directory;
 is a reserved local reviewer, cannot enroll principals, edit queues or claim
 worker jobs, and is never put in arguments, logs or the environment.
 
-The left pane selects queues across services. The middle pane shows Pending or
-History with a compact list of decisions and subjects. The hourly chart counts
-recorded requests. The selected review has Overview, Evidence, Policy and
-Investigate tabs. Sources shows producer heartbeats and optional sensor readers
-with their coverage and stale status. Missing observations do not establish
-safety. Policy previews are explanations and cannot approve requests.
+The left pane selects queues across services. The middle pane has one
+chronological list of decisions and subjects. Compact Pending and History pills
+independently include or hide each state; both start enabled. A request keeps its
+identity when it settles, without duplicate rows. The inspector has Overview,
+Evidence, Policy and Investigate tabs.
+
+Settings, at the bottom of the sidebar, contains appearance, producer heartbeats
+and optional sensor readers with their coverage and stale status. Missing
+observations do not establish safety. Policy previews explain recommendations
+and cannot approve requests.
 
 Use Left/Right to change the active pane, Up/Down to navigate or scroll details,
-Ctrl+F to search, Ctrl+1/2/3 for Pending/History/Sources and Ctrl+R to refresh. Click
-Investigate to ask a question, optionally override the configured model, and send
-with Ctrl+Enter. Text inputs support selection, clipboard, undo and IME. Drafts
-are kept separately per selected request for the life of the window.
-Investigation messages have stable retry keys.
+Ctrl+F to search, Ctrl+1/2 to toggle Pending/History, Ctrl+3 for Settings and Ctrl+R
+to refresh. Search returns from Settings to the list. Escape closes Settings or
+returns from an editor to navigation. Click Investigate to ask a question,
+optionally override the configured model, and send with Ctrl+Enter. Text inputs
+support selection, clipboard, undo and IME. Drafts are kept separately per selected
+request for the life of the window. Investigation messages have stable retry keys.
 
-Choose **System**, **Light** or **Dark** in the toolbar, or cycle them with
+Choose **System**, **Light** or **Dark** in Settings, or cycle them with
 Ctrl+Shift+T. System follows desktop appearance changes while the window is open.
 The choice is saved to `$XDG_STATE_HOME/tachikoma/desktop/appearance.json`
 (default `~/.local/state/tachikoma/desktop/appearance.json`). `--appearance`

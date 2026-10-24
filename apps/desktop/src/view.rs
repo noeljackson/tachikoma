@@ -2,8 +2,8 @@ use crate::{backend::Backend, state::*};
 use crate::{components::Ui, design::Appearance, icons::Icon};
 use approval_protocol::*;
 use gpui::{
-    App, Context, Div, Entity, FocusHandle, Focusable, KeyBinding, SharedString, Subscription,
-    Window, actions, div, prelude::*, px, rgb,
+    App, Context, Entity, FocusHandle, Focusable, KeyBinding, SharedString, Subscription, Window,
+    actions, div, prelude::*, px, rgb,
 };
 use gpui_elements::editable_text::{
     EditableTextState, StringStorage, TextChanged, actions::DEFAULT_INPUT_CONTEXT, text_area,
@@ -19,9 +19,9 @@ actions!(
         FocusLeft,
         FocusRight,
         Refresh,
-        Inbox,
-        History,
-        Health,
+        TogglePending,
+        ToggleHistory,
+        OpenSettings,
         Search,
         Escape,
         Send,
@@ -36,9 +36,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("right", FocusRight, Some("ReviewNavigation")),
         KeyBinding::new("ctrl-r", Refresh, Some("DecisionUI")),
         KeyBinding::new("ctrl-shift-t", CycleAppearance, Some("DecisionUI")),
-        KeyBinding::new("ctrl-1", Inbox, Some("DecisionUI")),
-        KeyBinding::new("ctrl-2", History, Some("DecisionUI")),
-        KeyBinding::new("ctrl-3", Health, Some("DecisionUI")),
+        KeyBinding::new("ctrl-1", TogglePending, Some("DecisionUI")),
+        KeyBinding::new("ctrl-2", ToggleHistory, Some("DecisionUI")),
+        KeyBinding::new("ctrl-3", OpenSettings, Some("DecisionUI")),
         KeyBinding::new("ctrl-f", Search, Some("DecisionUI")),
         KeyBinding::new("escape", Escape, Some("DecisionUI")),
         // Escape leaves an editor through our navigation focus rather than clearing focus.
@@ -97,10 +97,7 @@ impl Desktop {
             }
         })
         .detach();
-        let mut state = State::default();
-        if !backend.demo {
-            state.page = Page::History;
-        }
+        let state = State::default();
         Self {
             state,
             ui,
@@ -173,15 +170,46 @@ impl Desktop {
     fn page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.state.page = page;
         self.state.confirmation = None;
-        self.state.pane = Pane::Requests;
-        let filter = self.filter.read(cx).as_str();
-        if let Some(review) = self.state.rows(filter).first() {
-            self.select(review.id.clone(), cx);
+        window.focus(&self.navigation_focus, cx);
+        cx.notify();
+    }
+    fn toggle_filter(&mut self, pending: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if pending {
+            self.state.show_pending = !self.state.show_pending;
+        } else {
+            self.state.show_history = !self.state.show_history;
         }
+        self.state.page = Page::Decisions;
+        self.state.confirmation = None;
+        let filter = self.filter.read(cx).as_str();
+        if !self
+            .state
+            .rows(filter)
+            .iter()
+            .any(|r| Some(&r.id) == self.state.selected.as_ref())
+        {
+            if let Some(review) = self.state.rows(filter).first() {
+                self.select(review.id.clone(), cx);
+            } else {
+                if let Some(id) = &self.state.selected {
+                    self.drafts
+                        .insert(id.clone(), self.draft.read(cx).as_str().to_owned());
+                }
+                self.state.selected = None;
+                self.state.snapshot.selected = None;
+                self.state.snapshot.preview = None;
+                self.state.snapshot.conversation = None;
+                self.draft.update(cx, |draft, cx| draft.emplace("", cx));
+            }
+        }
+        self.state.pane = Pane::Requests;
         window.focus(&self.navigation_focus, cx);
         cx.notify();
     }
     fn navigate(&mut self, offset: isize, cx: &mut Context<Self>) {
+        if self.state.page == Page::Settings && self.state.pane != Pane::Queues {
+            return;
+        }
         if self.state.pane == Pane::Queues {
             let queues = &self.state.snapshot.queues;
             let index = self
@@ -354,6 +382,7 @@ impl Desktop {
                 .insert(previous.clone(), self.draft.read(cx).as_str().to_owned());
         }
         self.state.queue = queue;
+        self.state.page = Page::Decisions;
         self.state.confirmation = None;
         let id = self
             .state
@@ -380,13 +409,7 @@ impl Desktop {
             .snapshot
             .queues
             .iter()
-            .map(|queue| {
-                if self.state.page == Page::History {
-                    queue.settled
-                } else {
-                    queue.pending
-                }
-            })
+            .map(|queue| self.state.visible_count(queue.pending, queue.settled))
             .sum::<u64>();
         let mut queues = vec![
             self.ui
@@ -407,11 +430,7 @@ impl Desktop {
         ];
         for queue in &self.state.snapshot.queues {
             let id = queue.manifest.id.clone();
-            let count = if self.state.page == Page::History {
-                queue.settled
-            } else {
-                queue.pending
-            };
+            let count = self.state.visible_count(queue.pending, queue.settled);
             let icon = match queue.manifest.service_kind.as_str() {
                 "snitchgate" => Icon::Shield,
                 "kubernetesgate" => Icon::Boxes,
@@ -466,29 +485,18 @@ impl Desktop {
             .child(
                 self.ui
                     .icon_button(
-                        "source-health",
-                        Icon::Server,
-                        "Sources & services",
-                        self.state.page == Page::Health,
+                        "settings",
+                        Icon::Settings,
+                        "Settings",
+                        self.state.page == Page::Settings,
                     )
                     .w_full()
                     .on_click(
-                        cx.listener(|this, _, window, cx| this.page(Page::Health, window, cx)),
-                    ),
-            )
-            .child(
-                div()
-                    .pt(px(metrics.space[2]))
-                    .border_t_1()
-                    .border_color(rgb(colors.border))
-                    .text_size(px(metrics.caption))
-                    .text_color(rgb(colors.muted))
-                    .child(
-                        "← → Switch pane · ↑ ↓ Navigate\nCtrl+F Search\nCtrl+Shift+T Appearance",
+                        cx.listener(|this, _, window, cx| this.page(Page::Settings, window, cx)),
                     ),
             )
     }
-    fn inbox(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn decision_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
         let metrics = self.ui.metrics;
         let rows = self.state.rows(self.filter.read(cx).as_str());
@@ -621,11 +629,7 @@ impl Desktop {
                         div()
                             .text_size(px(metrics.title))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(if self.state.page == Page::Inbox {
-                                "Pending Decisions"
-                            } else {
-                                "Decision History"
-                            }),
+                            .child("Decisions"),
                     )
                     .child(self.ui.caption(&format!("{count}"))),
             )
@@ -638,7 +642,7 @@ impl Desktop {
                             .placeholder_color(rgb(colors.muted))
                             .caret_color(gpui::rgb_to_hsla(rgb(colors.text)))
                             .state(self.filter.downgrade())
-                            .placeholder("Search decisions, subjects or evidence")
+                            .placeholder("Search decisions or subjects")
                             .px(px(metrics.space[2]))
                             .py(px(metrics.space[1]))
                             .rounded(px(metrics.control_radius))
@@ -650,7 +654,14 @@ impl Desktop {
                             .text_size(px(metrics.body)),
                     ),
             )
-            .child(activity_chart(&rows, self.ui))
+            .child(
+                div().px(px(metrics.space[2])).pb(px(metrics.space[2]))
+                    .flex().items_center().gap(px(metrics.space[1]))
+                    .child(self.ui.pill("pending-filter", format!("Pending  {}", self.state.snapshot.queues.iter().filter(|q| self.state.queue.as_ref().is_none_or(|id| id == &q.manifest.id)).map(|q| q.pending).sum::<u64>()), self.state.show_pending)
+                        .on_click(cx.listener(|this, _, window, cx| this.toggle_filter(true, window, cx))))
+                    .child(self.ui.pill("history-filter", format!("History  {}", self.state.snapshot.queues.iter().filter(|q| self.state.queue.as_ref().is_none_or(|id| id == &q.manifest.id)).map(|q| q.settled).sum::<u64>()), self.state.show_history)
+                        .on_click(cx.listener(|this, _, window, cx| this.toggle_filter(false, window, cx))))
+            )
             .child(
                 div()
                     .px(px(metrics.space[3]))
@@ -677,7 +688,11 @@ impl Desktop {
                                 .text_size(px(metrics.body))
                                 .text_color(rgb(colors.muted))
                                 .child(if self.state.connected {
-                                    "No requests in this view. New requests appear automatically."
+                                    if !self.state.show_pending && !self.state.show_history {
+                                        "Both filters are off. Enable Pending or History to show decisions."
+                                    } else {
+                                        "No matching decisions. New requests appear automatically."
+                                    }
                                 } else {
                                     "Connecting to the local approval service…"
                                 }),
@@ -1256,10 +1271,35 @@ impl Desktop {
             }))
             .children(content)
     }
-    fn health(&self) -> impl IntoElement {
+    fn settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let metrics = self.ui.metrics;
-        let mut content = vec![div().text_size(px(metrics.title)).font_weight(gpui::FontWeight::SEMIBOLD).child("Sources & Service Status").into_any_element(),
-            self.ui.section("Coverage", "Each service publishes its own status. A ready source means its reader is available; it does not prove every event was observed.".into()).into_any_element()];
+        let mut appearances = vec![];
+        for (appearance, title, icon) in [
+            (Appearance::System, "System", Icon::System),
+            (Appearance::Light, "Light", Icon::Sun),
+            (Appearance::Dark, "Dark", Icon::Moon),
+        ] {
+            appearances.push(
+                self.ui
+                    .icon_button(title, icon, title, self.appearance == appearance)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.set_appearance(appearance, window, cx)
+                    }))
+                    .into_any_element(),
+            );
+        }
+        let mut content = vec![
+            div().flex().items_center().justify_between()
+                .child(div().text_size(px(metrics.title)).font_weight(gpui::FontWeight::SEMIBOLD).child("Settings"))
+                .child(self.ui.button("close-settings", "Done", self.ui.colors.text)
+                    .on_click(cx.listener(|this, _, window, cx| this.page(Page::Decisions, window, cx))))
+                .into_any_element(),
+            div().child(self.ui.caption("APPEARANCE"))
+                .child(div().mt(px(metrics.space[1])).flex().items_center().gap(px(metrics.space[1])).children(appearances))
+                .into_any_element(),
+            div().mt(px(metrics.space[3])).text_size(px(metrics.title)).font_weight(gpui::FontWeight::SEMIBOLD).child("Sources & services").into_any_element(),
+            self.ui.section("Coverage", "Each service publishes its own status. A ready source means its reader is available; it does not prove every event was observed.".into()).into_any_element(),
+        ];
         if let Some(health) = &self.state.snapshot.health {
             content.push(
                 self.ui
@@ -1341,39 +1381,6 @@ impl Render for Desktop {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
         let metrics = self.ui.metrics;
-        let mut tabs = vec![];
-        for (page, title, icon) in [
-            (Page::Inbox, "Pending", Icon::Inbox),
-            (Page::History, "History", Icon::History),
-            (Page::Health, "Sources", Icon::Server),
-        ] {
-            let label = if page == Page::Inbox {
-                format!("Pending  {}", self.state.snapshot.pending.len())
-            } else {
-                title.to_owned()
-            };
-            tabs.push(
-                self.ui
-                    .icon_button(title, icon, &label, self.state.page == page)
-                    .on_click(cx.listener(move |this, _, window, cx| this.page(page, window, cx)))
-                    .into_any_element(),
-            );
-        }
-        let mut appearances = vec![];
-        for (appearance, title, icon) in [
-            (Appearance::System, "System", Icon::System),
-            (Appearance::Light, "Light", Icon::Sun),
-            (Appearance::Dark, "Dark", Icon::Moon),
-        ] {
-            appearances.push(
-                self.ui
-                    .icon_button(title, icon, title, self.appearance == appearance)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.set_appearance(appearance, window, cx)
-                    }))
-                    .into_any_element(),
-            );
-        }
         let connected = self.state.connected;
         let status = if self.backend.demo {
             "Offline example · read only"
@@ -1392,20 +1399,23 @@ impl Render for Desktop {
             .font_family("Inter")
             .text_size(px(metrics.body))
             .on_action(cx.listener(|this, _: &Refresh, _, cx| this.refresh(cx)))
-            .on_action(
-                cx.listener(|this, _: &Inbox, window, cx| this.page(Page::Inbox, window, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &History, window, cx| this.page(Page::History, window, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &Health, window, cx| this.page(Page::Health, window, cx)),
-            )
+            .on_action(cx.listener(|this, _: &TogglePending, window, cx| {
+                this.toggle_filter(true, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleHistory, window, cx| {
+                this.toggle_filter(false, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &OpenSettings, window, cx| {
+                this.page(Page::Settings, window, cx)
+            }))
             .on_action(cx.listener(|this, _: &Search, window, cx| {
-                window.focus(&this.filter.read(cx).focus_handle(cx), cx)
+                this.state.page = Page::Decisions;
+                window.focus(&this.filter.read(cx).focus_handle(cx), cx);
+                cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 this.state.confirmation = None;
+                this.state.page = Page::Decisions;
                 window.focus(&this.navigation_focus, cx);
                 cx.notify();
             }))
@@ -1413,31 +1423,6 @@ impl Render for Desktop {
             .on_action(cx.listener(|this, _: &CycleAppearance, window, cx| {
                 this.set_appearance(this.appearance.next(), window, cx)
             }))
-            .child(
-                div()
-                    .h(px(metrics.toolbar_height))
-                    .flex_shrink_0()
-                    .px(px(metrics.space[3]))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(rgb(colors.border))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(metrics.space[1]))
-                            .children(tabs),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(metrics.space[1]))
-                            .children(appearances),
-                    ),
-            )
             .child(
                 div()
                     .key_context("ReviewNavigation")
@@ -1462,11 +1447,13 @@ impl Render for Desktop {
                         cx.notify();
                     }))
                     .child(self.sidebar(cx))
-                    .when(self.state.page == Page::Health, |element| {
-                        element.child(self.health())
+                    .when(self.state.page == Page::Settings, |element| {
+                        element.child(self.settings(cx))
                     })
-                    .when(self.state.page != Page::Health, |element| {
-                        element.child(self.inbox(cx)).child(self.details(cx))
+                    .when(self.state.page != Page::Settings, |element| {
+                        element
+                            .child(self.decision_list(cx))
+                            .child(self.details(cx))
                     }),
             )
             .child(
@@ -1606,54 +1593,6 @@ fn relative_time(at: i64) -> String {
         format!("{}d ago", seconds / 86400)
     }
 }
-fn activity_chart(reviews: &[&Review], ui: Ui) -> Div {
-    let colors = ui.colors;
-    let mut buckets = [0usize; 30];
-    let now = now_ms();
-    for review in reviews {
-        let age = now.saturating_sub(review.created_at_ms);
-        if (0..3600000).contains(&age) {
-            buckets[29 - (age / 120000) as usize] += 1;
-        }
-    }
-    let max = buckets.iter().copied().max().unwrap_or(1).max(1);
-    div()
-        .px_4()
-        .pb_3()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(
-            div()
-                .flex()
-                .justify_between()
-                .child(ui.caption("RECORDED DECISIONS · LAST HOUR"))
-                .child(ui.caption(&buckets.iter().sum::<usize>().to_string())),
-        )
-        .child(
-            div()
-                .h(px(28.))
-                .flex()
-                .items_end()
-                .gap(px(3.))
-                .children(buckets.into_iter().map(|count| {
-                    div()
-                        .flex_1()
-                        .h(px(if count == 0 {
-                            2.
-                        } else {
-                            4. + 24. * count as f32 / max as f32
-                        }))
-                        .rounded_sm()
-                        .bg(rgb(if count == 0 {
-                            colors.chart_empty
-                        } else {
-                            colors.chart
-                        }))
-                })),
-        )
-}
-
 fn review_title(review: &Review) -> String {
     if review.request.schema_id == "network.connect.v1" {
         format!(

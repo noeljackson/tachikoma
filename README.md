@@ -78,9 +78,10 @@ previews never record decisions or enable automatic permissions.
 Run `tachikoma-gui` or open **tachikoma** from the desktop launcher. The
 [native desktop guide](docs/desktop.md) covers installation, keyboard controls,
 private reviewer identity, the pinned upstream GPUI dependency and dependency review.
-The native interface opens without a sign-in form and has queues, Pending, History,
-Sources, classifications, evidence, rule traces, investigations and scoped
-approval controls, System/Light/Dark appearance and consistent icons. The previous browser interface requires `--legacy-web`.
+The native interface opens without a sign-in form and has queues, one decision
+list with Pending/History filter pills, classifications, evidence, rule traces,
+investigations and scoped approval controls. Sidebar Settings contains sources,
+services and System/Light/Dark appearance. Controls share aligned icons and text. The previous browser interface requires `--legacy-web`.
 
 To try without installing binaries:
 

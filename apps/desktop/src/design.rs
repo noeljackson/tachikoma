@@ -100,8 +100,6 @@ pub struct Colors {
     pub warning: u32,
     pub info_surface: u32,
     pub warning_surface: u32,
-    pub chart: u32,
-    pub chart_empty: u32,
 }
 #[derive(Deserialize)]
 struct Scales {
@@ -155,8 +153,6 @@ impl Colors {
             warning: color(&palette.amber, 11),
             info_surface: color(&palette.blue, 2),
             warning_surface: color(&palette.amber, 3),
-            chart: color(&palette.blue, 9),
-            chart_empty: color(&palette.slate, 4),
         }
     }
 }
@@ -170,7 +166,8 @@ pub struct Metrics {
     pub control_radius: f32,
     pub panel_radius: f32,
     pub control_height: f32,
-    pub toolbar_height: f32,
+    pub line_height: f32,
+    pub filter_height: f32,
     pub sidebar_width: f32,
     pub list_width: f32,
     pub icon: f32,
@@ -183,7 +180,8 @@ pub const METRICS: Metrics = Metrics {
     control_radius: 6.,
     panel_radius: 8.,
     control_height: 32.,
-    toolbar_height: 56.,
+    line_height: 20.,
+    filter_height: 28.,
     sidebar_width: 216.,
     list_width: 440.,
     icon: 16.,

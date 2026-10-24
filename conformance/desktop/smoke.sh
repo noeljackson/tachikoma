@@ -20,15 +20,15 @@ while "Decision UI first frame rendered" not in log.read_text():
         raise RuntimeError("Native window never rendered its first frame")
     time.sleep(0.1)
 PYCODE
-xdotool key ctrl+f
+xdotool key ctrl+3 ctrl+f
 xdotool type --delay 35 registry.example
 xdotool key ctrl+a
 xdotool type --delay 35 no-match
-xdotool key ctrl+a BackSpace Escape ctrl+3 ctrl+1 Right Down Left ctrl+shift+t ctrl+shift+t
+xdotool key ctrl+a BackSpace Escape ctrl+3 ctrl+1 ctrl+2 ctrl+1 ctrl+2 Right Down Left ctrl+shift+t ctrl+shift+t
 if ! wait "$gui_pid"; then cat "$log_file"; exit 1; fi
 cat "$log_file"
 grep -F 'Decision UI native smoke test complete' "$log_file"
-for action in Search Health Inbox FocusRight Next FocusLeft CycleAppearance; do
+for action in Search OpenSettings TogglePending ToggleHistory FocusRight Next FocusLeft CycleAppearance; do
     grep -F "name: \"desktop::$action\"" "$log_file" >/dev/null
 done
 

@@ -27,8 +27,11 @@ impl Ui {
         div()
             .id(id)
             .px(px(self.metrics.space[2]))
-            .py(px(self.metrics.space[1]))
-            .min_h(px(self.metrics.control_height))
+            .h(px(self.metrics.control_height))
+            .flex()
+            .items_center()
+            .justify_center()
+            .line_height(px(self.metrics.line_height))
             .rounded(px(self.metrics.control_radius))
             .text_size(px(self.metrics.body))
             .cursor_pointer()
@@ -105,6 +108,11 @@ impl Ui {
                     .child(icon.view(foreground, self.metrics.icon))
                     .child(div().min_w_0().truncate().child(label.to_owned())),
             )
+    }
+    pub fn pill(self, id: impl Into<ElementId>, label: String, selected: bool) -> Stateful<Div> {
+        self.segment(id, label, selected)
+            .h(px(self.metrics.filter_height))
+            .rounded_full()
     }
     pub fn section(self, title: &str, body: String) -> Div {
         div()
