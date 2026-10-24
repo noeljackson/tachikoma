@@ -51,6 +51,7 @@ class Browser:
 class BrowserTests(unittest.TestCase):
     def setUp(self):
         self.fixture=contract.ContractTests()
+        self.fixture.legacy_web=True
         self.fixture.setUp()
         self.browser=None
         self.addCleanup(self.cleanup)

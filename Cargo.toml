@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [".", "services/snitchgate", "crates/approval-protocol", "crates/approval-client", "crates/control-plane", "apps/tui", "workers/assessment", "workers/review-slack", "services/kubernetesgate", "apps/web", "apps/daemon", "services/evidence-source"]
+members = [".", "services/snitchgate", "crates/approval-protocol", "crates/approval-client", "crates/control-plane", "apps/tui", "workers/assessment", "workers/review-slack", "services/kubernetesgate", "apps/web", "apps/daemon", "services/evidence-source", "apps/desktop"]
 default-members = ["."]
 
 [package]

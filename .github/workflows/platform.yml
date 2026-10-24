@@ -16,5 +16,7 @@ jobs:
         run: make test-docker
       - name: Browser approval and investigation workflow
         run: make test-browser
+      - name: Native desktop rendering (Xvfb and software Vulkan)
+        run: make test-desktop
       - name: Build an independent producer
         run: docker build --target service-runtime --build-arg SERVICE=kubernetesgate --build-arg BINARY=kubernetesgate --tag kubernetesgate:contract .

@@ -10,7 +10,7 @@ This Rust workspace includes:
 | Component | Responsibility |
 | --- | --- |
 | `apps/daemon` | Generic durable approval API (`tachikomad`) |
-| `apps/tui`, `apps/web` | Ratatui and local web review |
+| `apps/desktop`, `apps/tui` | GPUI CE desktop and Ratatui review |
 | `workers/assessment` | Bounded Jev classification and Ollama explanations/investigations |
 | `workers/review-slack` | Socket Mode delivery and authorized replies |
 | `services/snitchgate` | OpenSnitch transport, local deadline and temporary rules |
@@ -36,6 +36,7 @@ run in Docker. The default build installs no services and contacts no providers.
 make check             # strict supply-chain gate, Docker runtime/browser tests, fmt, clippy
 make build-platform    # build all independently runnable services
 make service-enable    # install/start the generic local approval daemon
+make install-desktop   # install the native GPUI CE interface
 ```
 
 The private administrator credential is generated at first startup in
@@ -74,17 +75,18 @@ custom JSONL publishers are independent optional adapters. Source availability
 appears in Health, and rule explanations appear with reviews. Evidence-policy
 previews never record decisions or enable automatic permissions.
 
-Open <http://127.0.0.1:7447/approval/> directly; no web sign-in or credential entry
-is required on this local workstation. The daemon keeps its own limited reviewer
-capability server-side. Same-origin submissions and CSRF protection remain
-enabled. History shows previous decisions; investigation replies refresh
-automatically while a turn is running.
+Run `tachikoma-gui` or open **Tachikoma** from the desktop launcher. The
+[native desktop guide](docs/desktop.md) covers installation, keyboard controls,
+private reviewer identity, GPUI fork reconciliation and dependency review.
+The native interface opens without a sign-in form and has Inbox, History,
+Health, classifications, evidence, rule traces, investigations and scoped
+approval controls. The previous browser interface requires `--legacy-web`.
 
 To try without installing binaries:
 
 ```sh
 docker compose up --build --detach
-# Open http://127.0.0.1:17447/approval/
+# Compose exposes health on http://127.0.0.1:17447/health
 docker compose exec tachikoma tachikoma --rpc-socket /tmp/tachikoma.sock \
   approval --credential /var/lib/tachikoma/approval/admin.token tui
 ```

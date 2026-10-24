@@ -68,7 +68,7 @@ class ContractTests(unittest.TestCase):
         self.start_daemon()
         self.admin = external.API(self.socket, self.root / "approval/admin.token")
     def start_daemon(self):
-        self.daemon = self.child([os.environ.get("TACHIKOMA_TEST_DAEMON", str(ROOT / "target/release/tachikomad")), "--database", str(self.root / "legacy.sqlite3"), "--rpc-socket", str(self.socket), "--listen", f"127.0.0.1:{self.port}"])
+        self.daemon = self.child([os.environ.get("TACHIKOMA_TEST_DAEMON", str(ROOT / "target/release/tachikomad")), "--database", str(self.root / "legacy.sqlite3"), "--rpc-socket", str(self.socket), "--listen", f"127.0.0.1:{self.port}"] + (["--legacy-web"] if getattr(self,"legacy_web",False) else []))
         until(lambda: self.socket.exists() and (self.root / "approval/admin.token").exists())
     def child(self, command, env=None):
         child = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -213,7 +213,25 @@ class ContractTests(unittest.TestCase):
         finally:
             if terminal.poll() is None:terminal.terminate();terminal.wait(timeout=5)
             os.close(master)
+    def test_native_is_default_and_local_desktop_credential_cannot_administer(self):
+        connection=http.client.HTTPConnection("127.0.0.1",self.port)
+        connection.request("GET","/")
+        response=connection.getresponse(); body=response.read().decode(); connection.close()
+        self.assertEqual(response.status,200); self.assertIn("tachikoma-gui",body)
+        connection=http.client.HTTPConnection("127.0.0.1",self.port)
+        connection.request("GET","/approval/")
+        response=connection.getresponse(); response.read(); connection.close()
+        self.assertEqual(response.status,404)
+        path=self.root/"approval/desktop.token"
+        self.assertEqual(path.stat().st_mode & 0o777,0o600)
+        desktop=external.API(self.socket,path)
+        self.assertEqual(desktop.call("GET","/identity")["role"],"reviewer")
+        self.assertEqual(desktop.call("GET","/identity")["id"],"local-desktop")
+        with self.assertRaisesRegex(RuntimeError,"HTTP 403"):
+            desktop.call("POST","/principals",{"id":"desktop-escalation","role":"admin","queues":[],"service_kind":"","realm":"","actors":[]})
     def test_local_web_opens_without_credentials_and_requires_origin_and_csrf(self):
+        self.daemon.terminate(); self.daemon.wait(timeout=5)
+        self.legacy_web=True; self.start_daemon()
         connection = http.client.HTTPConnection("127.0.0.1", self.port)
         connection.request("GET", "/approval/", headers={"Host":"evil.example"})
         response=connection.getresponse()

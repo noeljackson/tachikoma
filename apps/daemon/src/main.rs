@@ -18,6 +18,9 @@ struct Args {
     rpc_socket: Option<PathBuf>,
     #[arg(long, default_value = "127.0.0.1:7447")]
     listen: std::net::SocketAddr,
+    /// Enable the previous local browser frontend for compatibility.
+    #[arg(long)]
+    legacy_web: bool,
     /// Allow a non-loopback web bind only behind a deliberately configured proxy.
     #[arg(long)]
     allow_container_bind: bool,
@@ -119,24 +122,34 @@ async fn main() -> Result<()> {
         &approval.join("approval.sqlite3"),
         &approval.join("admin.token"),
     )?;
-    let web_client = approval_client::Client::new(
-        "http://tachikoma.local",
-        Some(&socket),
-        store
-            .local_web_credential()
-            .map_err(|_| anyhow::anyhow!("initialize local web reviewer"))?,
-    )?;
+    store.initialize_local_desktop(&approval.join("desktop.token"))?;
+    let web_client = if args.legacy_web {
+        Some(approval_client::Client::new(
+            "http://tachikoma.local",
+            Some(&socket),
+            store
+                .local_web_credential()
+                .map_err(|_| anyhow::anyhow!("initialize local web reviewer"))?,
+        )?)
+    } else {
+        None
+    };
     let api = control_plane::Api::new(store);
     let listener = tokio::net::UnixListener::bind(&socket)?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     let web_listener = tokio::net::TcpListener::bind(args.listen).await?;
-    let web = Router::new()
-        .route("/", get(|| async { Redirect::to("/approval/") }))
-        .route("/health", get(|| async { "OK" }))
-        .nest("/approval/", approval_web::router(web_client));
+    let web = if let Some(client) = web_client {
+        Router::new().route("/", get(|| async { Redirect::to("/approval/") }))
+            .nest("/approval/", approval_web::router(client))
+    } else {
+        Router::new().route("/", get(|| async { "Tachikoma now uses a native desktop interface. Open Tachikoma from your launcher or run tachikoma-gui. The terminal interface is available with tachikoma tui." }))
+    }.route("/health", get(|| async { "OK" }));
     notify_ready()?;
-    eprintln!("Tachikoma approval API ready; web {}", args.listen);
+    eprintln!(
+        "Tachikoma approval API ready; health listener {}",
+        args.listen
+    );
     let api_server = axum::serve(listener, api.router()).with_graceful_shutdown(shutdown());
     let web_server = axum::serve(web_listener, web).with_graceful_shutdown(shutdown());
     tokio::try_join!(api_server, web_server)?;

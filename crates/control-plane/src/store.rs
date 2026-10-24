@@ -107,7 +107,8 @@ impl Principal {
     }
     fn queue(&self, queue: &str) -> bool {
         self.admin()
-            || (self.spec.id == "local-web" && self.spec.role == Role::Reviewer)
+            || (matches!(self.spec.id.as_str(), "local-web" | "local-desktop")
+                && self.spec.role == Role::Reviewer)
             || self.spec.queues.iter().any(|q| q == queue)
     }
     fn read(&self, review: &Review) -> bool {
@@ -224,6 +225,49 @@ impl Store {
         self.db.execute("INSERT INTO principals(id,hash,spec,last_seen,detail) VALUES(?1,?2,?3,0,'') ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,spec=excluded.spec", params![spec.id,digest(token.as_bytes()),json(&spec)?])?;
         Ok(token)
     }
+    /// A private local reviewer capability; no administrator or worker authority.
+    pub fn initialize_local_desktop(&mut self, path: &Path) -> anyhow::Result<()> {
+        let token = match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                anyhow::ensure!(
+                    metadata.is_file()
+                        && metadata.uid() == fs::metadata("/proc/self")?.uid()
+                        && metadata.mode() & 0o077 == 0
+                        && metadata.len() == 64,
+                    "desktop reviewer credential must be a private regular file"
+                );
+                fs::read_to_string(path)?
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let token = credential().map_err(|_| anyhow::anyhow!("create desktop reviewer"))?;
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(path)?;
+                use std::io::Write;
+                file.write_all(token.as_bytes())?;
+                file.sync_all()?;
+                token
+            }
+            Err(error) => return Err(error.into()),
+        };
+        anyhow::ensure!(
+            token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "invalid desktop reviewer credential"
+        );
+        let spec = PrincipalSpec {
+            id: "local-desktop".into(),
+            role: Role::Reviewer,
+            queues: vec![],
+            service_kind: String::new(),
+            realm: String::new(),
+            actors: vec![],
+        };
+        self.db.execute("INSERT INTO principals(id,hash,spec,last_seen,detail) VALUES(?1,?2,?3,0,'') ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,spec=excluded.spec",
+            params![spec.id,digest(token.as_bytes()),json(&spec).map_err(|_| anyhow::anyhow!("serialize desktop reviewer"))?])?;
+        Ok(())
+    }
     fn init(db: Connection) -> anyhow::Result<Self> {
         db.busy_timeout(std::time::Duration::from_secs(3))?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA max_page_count=262144;
@@ -279,7 +323,10 @@ impl Store {
     }
     fn validate_principal(&self, spec: &PrincipalSpec) -> Result<()> {
         if !identifier(&spec.id)
-            || matches!(spec.id.as_str(), "local-admin" | "local-web")
+            || matches!(
+                spec.id.as_str(),
+                "local-admin" | "local-web" | "local-desktop"
+            )
             || spec.queues.len() > 64
             || spec.actors.len() > 64
             || spec.actors.iter().any(|a| !identifier(a))
@@ -341,7 +388,9 @@ impl Store {
     }
     pub fn revoke(&mut self, actor: &Principal, identity: &str) -> Result<()> {
         actor.require(Role::Admin)?;
-        if matches!(identity, "local-admin" | "local-web") || !identifier(identity) {
+        if matches!(identity, "local-admin" | "local-web" | "local-desktop")
+            || !identifier(identity)
+        {
             return Err(Fault::bad());
         }
         let exists: bool = self.db.query_row(
@@ -739,7 +788,7 @@ impl Store {
         if !["pending", "history", "all"].contains(&state) {
             return Err(Fault::bad());
         }
-        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) ORDER BY seq DESC LIMIT 16")?.query_map(params![before,state,actor.admin() || (actor.spec.id == "local-web" && actor.spec.role == Role::Reviewer),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""}], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
+        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) ORDER BY seq DESC LIMIT 16")?.query_map(params![before,state,actor.admin() || (matches!(actor.spec.id.as_str(), "local-web" | "local-desktop") && actor.spec.role == Role::Reviewer),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""}], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
         let next_before = (rows.len() == 16).then(|| rows.last().unwrap().0);
         let mut reviews = vec![];
         for (_, body) in rows {
@@ -2259,5 +2308,56 @@ mod tests {
         let next = store.local_web_credential().unwrap();
         assert!(store.authenticate(&key).is_err());
         assert!(store.authenticate(&next).is_ok());
+    }
+    #[test]
+    fn desktop_reviewer_is_private_persistent_and_has_no_admin_or_worker_authority() {
+        let (mut store, producer) = fixture();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("desktop.token");
+        store.initialize_local_desktop(&path).unwrap();
+        let key = fs::read_to_string(&path).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        let desktop = store.authenticate(&key).unwrap();
+        let review = store.submit(&producer, submission()).unwrap();
+        assert_eq!(
+            store
+                .list(&desktop, i64::MAX, "pending")
+                .unwrap()
+                .reviews
+                .len(),
+            1
+        );
+        assert!(store.put_queue(&desktop, manifest()).is_err());
+        assert!(
+            store
+                .claim(
+                    &desktop,
+                    ClaimJob {
+                        kind: "assessment".into()
+                    }
+                )
+                .is_err()
+        );
+        assert!(store.enroll(&desktop, producer.spec.clone()).is_err());
+        assert!(store.enroll(&admin(), desktop.spec.clone()).is_err());
+        assert!(store.revoke(&admin(), "local-desktop").is_err());
+        assert!(store.rotate(&admin(), "local-desktop").is_err());
+        assert!(store.submit(&desktop, submission()).is_err());
+        assert_eq!(
+            store
+                .decide(&desktop, &review.id, decide())
+                .unwrap()
+                .decision
+                .unwrap()
+                .actor,
+            "local-desktop"
+        );
+        store.initialize_local_desktop(&path).unwrap();
+        assert!(store.authenticate(&key).is_ok());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(store.initialize_local_desktop(&path).is_err());
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(root.path().join("absent"), &path).unwrap();
+        assert!(store.initialize_local_desktop(&path).is_err());
     }
 }

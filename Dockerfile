@@ -1,6 +1,8 @@
 FROM rust:1.96-bookworm AS toolchain
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends protobuf-compiler \
+    && apt-get install --yes --no-install-recommends protobuf-compiler pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev \
+        libxcb-shape0-dev libxcb-xfixes0-dev libxcb-randr0-dev libxcb-xinput-dev \
+        libegl1-mesa-dev libgles2-mesa-dev libglib2.0-dev libfontconfig-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 FROM toolchain AS source
@@ -82,3 +84,11 @@ COPY --from=build /out/tachikoma /usr/local/bin/tachikoma
 USER tachikoma
 EXPOSE 7447
 ENTRYPOINT ["/usr/local/bin/tachikomad", "--database", "/var/lib/tachikoma/tachikoma.sqlite3", "--rpc-socket", "/tmp/tachikoma.sock", "--listen", "0.0.0.0:7447", "--allow-container-bind"]
+
+# Native window smoke test is isolated from live services and sockets.
+FROM test AS desktop-test
+RUN apt-get update && apt-get install --yes --no-install-recommends xvfb xauth xdotool mesa-vulkan-drivers libvulkan1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
+    mkdir -p /tmp/desktop-runtime && chmod 700 /tmp/desktop-runtime \
+    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh
