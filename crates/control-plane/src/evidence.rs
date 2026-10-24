@@ -64,6 +64,25 @@ fn trace(state: MatchState, reason: impl Into<String>) -> RuleTrace {
     }
 }
 
+// Advisory policy snapshots contain decimal thresholds/model scores. They are
+// separate from immutable wire facts, whose interoperable integer-only hash
+// contract must remain unchanged.
+fn snapshot_fingerprint<T: Serialize>(input: &T) -> Result<String> {
+    fn sorted(value: Value) -> Value {
+        match value {
+            Value::Object(object) => {
+                let fields: BTreeMap<_, _> = object.into_iter().collect();
+                Value::Object(fields.into_iter().map(|(k, v)| (k, sorted(v))).collect())
+            }
+            Value::Array(array) => Value::Array(array.into_iter().map(sorted).collect()),
+            other => other,
+        }
+    }
+    Ok(digest(&serde_json::to_vec(&sorted(serde_json::to_value(
+        input,
+    )?))?))
+}
+
 impl Store {
     fn source_info(&self, id: &str) -> Result<SourceInfo> {
         let row:Option<(String,i64,i64,bool,String,String)>=self.db.query_row("SELECT spec,revision,last_seen,ready,detail,writer FROM evidence_sources WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional()?;
@@ -288,7 +307,7 @@ impl Store {
             return Err(Fault::bad());
         }
         if let Some(old) = self.evidence_policy(actor, &policy.queue)?
-            && fingerprint(&old.policy)? == fingerprint(&policy)?
+            && snapshot_fingerprint(&old.policy)? == snapshot_fingerprint(&policy)?
         {
             return Ok(old);
         }
@@ -527,7 +546,7 @@ impl Store {
         }
         let sources = self.sources(actor)?;
         preview.snapshot_digest =
-            fingerprint(&value!({"request":review,"sources":sources,"preview":preview}))?;
+            snapshot_fingerprint(&value!({"request":review,"sources":sources,"preview":preview}))?;
         Ok(preview)
     }
 }
