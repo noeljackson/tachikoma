@@ -77,7 +77,7 @@ previews never record decisions or enable automatic permissions.
 
 Run `tachikoma-gui` or open **Tachikoma** from the desktop launcher. The
 [native desktop guide](docs/desktop.md) covers installation, keyboard controls,
-private reviewer identity, GPUI fork reconciliation and dependency review.
+private reviewer identity, the pinned upstream GPUI dependency and dependency review.
 The native interface opens without a sign-in form and has Inbox, History,
 Health, classifications, evidence, rule traces, investigations and scoped
 approval controls. The previous browser interface requires `--legacy-web`.

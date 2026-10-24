@@ -15,9 +15,9 @@ approval-protocol = { path = "../../crates/approval-protocol" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
-gpui = { package = "gpui-ce", git = "https://github.com/noeljackson/gpui-ce", rev = "26813dad6cbc4a5e1a2f56ef46e27d0f16ea30ff", default-features = false }
-gpui_platform = { package = "gpui_ce_platform", git = "https://github.com/noeljackson/gpui-ce", rev = "26813dad6cbc4a5e1a2f56ef46e27d0f16ea30ff", features = ["wayland", "x11"] }
-gpui_elements = { package = "gpui_ce_elements", git = "https://github.com/noeljackson/gpui-ce", rev = "26813dad6cbc4a5e1a2f56ef46e27d0f16ea30ff" }
+gpui = { package = "gpui-ce", git = "https://github.com/gpui-ce/gpui-ce", rev = "94791b8882f88c126b3089759cb7829a9c1de1a2", default-features = false }
+gpui_platform = { package = "gpui_ce_platform", git = "https://github.com/gpui-ce/gpui-ce", rev = "94791b8882f88c126b3089759cb7829a9c1de1a2", features = ["wayland", "x11"] }
+gpui_elements = { package = "gpui_ce_elements", git = "https://github.com/gpui-ce/gpui-ce", rev = "94791b8882f88c126b3089759cb7829a9c1de1a2" }
 serde_json = "1"
 serde = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }

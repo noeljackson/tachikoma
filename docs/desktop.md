@@ -42,19 +42,16 @@ The daemon's loopback HTTP listener now serves health and a native-launch hint.
 The old browser UI is available only with `tachikomad --legacy-web`; this flag is
 used by compatibility browser tests. It is not enabled by the installed unit.
 
-## GPUI fork reconciliation
+## GPUI dependency
 
-The dependency is pinned to Noel's fork at
-`26813dad6cbc4a5e1a2f56ef46e27d0f16ea30ff`, merging upstream
-`94791b8882f88c126b3089759cb7829a9c1de1a2`. The merge keeps the fork's earlier
-history and adopts upstream's complete workspace tree. The old fork-only
-`Application::on_become_active` extension and graphics/font overrides are not
-ported; consumers of that hook must migrate to upstream's window activation
-observers. This desktop does not depend on the removed extension. No changes or
-messages were submitted to the upstream project.
+GPUI core, platform and editable-text crates are pinned directly to
+[upstream GPUI CE](https://github.com/gpui-ce/gpui-ce) at commit
+`94791b8882f88c126b3089759cb7829a9c1de1a2`. This is the same source tree as
+the previously tested fork reconciliation; no fork-specific API is required.
+All three crates share this exact revision so their APIs stay compatible.
+Upgrades are explicit rather than following a moving branch.
 
-GPUI core, platform and editable-text crates all use the same pinned fork
-revision. Linux needs a graphical session with Vulkan support and development
+Linux needs a graphical session with Vulkan support and development
 packages equivalent to `libxkbcommon`, `libx11`, `libxcb`, `wayland`, `libglvnd`,
 `glib2` and `fontconfig`. Wayland and X11 are supported. A desktop launcher is
 installed without starting the GUI at boot; the approval daemon and existing
