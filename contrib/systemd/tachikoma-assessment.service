@@ -1,0 +1,20 @@
+[Unit]
+Description=Tachikoma network assessment worker
+After=tachikoma.service
+Wants=tachikoma.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env -i HOME=%h XDG_RUNTIME_DIR=%t PATH=/usr/local/bin:/usr/bin CREDENTIALS_DIRECTORY=%d %h/.local/bin/tachikoma-assessment-worker --socket %t/tachikoma/tachikoma.sock --credential %d/approval.token --jev-key-file %d/TYPESAFE_API_KEY --llm-model qwen3.5:9b
+LoadCredential=approval.token:%h/.config/tachikoma/credentials/network-worker.token
+LoadCredentialEncrypted=TYPESAFE_API_KEY:%h/.config/tachikoma/credentials/TYPESAFE_API_KEY.cred
+Restart=on-failure
+RestartSec=3s
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

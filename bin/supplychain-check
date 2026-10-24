@@ -2,7 +2,7 @@
 set -euo pipefail
 
 supplychain_src="${SUPPLYCHAIN_SRC:-$HOME/src/noeljackson/supplychain}"
-supplychain_ref="${SUPPLYCHAIN_REF:-dd34170a75a80d9b3484e39df0ac2a5ebf6682dc}"
+supplychain_ref="${SUPPLYCHAIN_REF:-97df5883cf9a3de3d2c81693374f958badc02fc3}"
 project_root="${1:?usage: supplychain-check PROJECT_ROOT}"
 
 test -d "$supplychain_src/.git"

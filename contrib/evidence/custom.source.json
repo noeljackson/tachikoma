@@ -1,0 +1,35 @@
+{
+  "id": "custom.scanner",
+  "title": "External scanner example",
+  "adapter": "jsonl",
+  "enabled": false,
+  "queues": [
+    "network.egress"
+  ],
+  "max_age_ms": 30000,
+  "coverage": "Only explicitly published scan results. No absence or completeness claim.",
+  "capabilities": {
+    "artifact.scan": {
+      "type": "object",
+      "fields": {
+        "artifact_sha256": {
+          "type": "string",
+          "max_len": 64
+        },
+        "verdict": {
+          "type": "string",
+          "max_len": 32,
+          "choices": [
+            "clean",
+            "flagged",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "artifact_sha256",
+        "verdict"
+      ]
+    }
+  }
+}

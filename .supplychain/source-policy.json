@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "advisories": {
+    "minimum_severity": "any",
+    "only_fixed": false
+  },
+  "exceptions": [
+    {
+      "kind": "osv",
+      "advisory_id": "RUSTSEC-2024-0436",
+      "package": "paste",
+      "reason": "Unmaintained proc-macro, not a disclosed exploit. GPUI renderer/shader and image dependencies require it; reviewed cargo tree includes Linux build-time use. Track upstream migration; no safe major-version substitution in the consumer.",
+      "owner": "@noeljackson",
+      "expires": "2026-11-24"
+    },
+    {
+      "kind": "osv",
+      "advisory_id": "RUSTSEC-2026-0370",
+      "package": "zvariant",
+      "reason": "Unmaintained standalone D-Bus crate merged into zbus 6. GPUI Linux accessibility/portal/keyring dependencies still require zbus 5. Runtime and proc-macro exposure reviewed; no vulnerability disclosed by this advisory.",
+      "owner": "@noeljackson",
+      "expires": "2026-11-24"
+    },
+    {
+      "kind": "osv",
+      "advisory_id": "RUSTSEC-2026-0371",
+      "package": "zbus_names",
+      "reason": "Unmaintained standalone D-Bus name crate merged into zbus 6. GPUI Linux accessibility/portal/keyring dependencies still require zbus 5. Runtime/build exposure reviewed; no vulnerability disclosed by this advisory.",
+      "owner": "@noeljackson",
+      "expires": "2026-11-24"
+    },
+    {
+      "kind": "osv",
+      "advisory_id": "RUSTSEC-2026-0372",
+      "package": "zvariant_derive",
+      "reason": "Unmaintained derive macros merged into zbus 6. Build-time dependency of GPUI Linux D-Bus integrations; upstream coordinated migration required. No vulnerability disclosed by this advisory.",
+      "owner": "@noeljackson",
+      "expires": "2026-11-24"
+    }
+  ]
+}

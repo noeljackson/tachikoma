@@ -1,0 +1,47 @@
+{
+  "icons": {
+    "repository": "https://github.com/lucide-icons/lucide",
+    "revision": "7faf87628a1ad6175975bc595344337ce14a7db4",
+    "files": [
+      "boxes.svg",
+      "braces.svg",
+      "check.svg",
+      "chevron-down.svg",
+      "chevron-right.svg",
+      "circle-check.svg",
+      "circle-dot.svg",
+      "circle-question-mark.svg",
+      "circle-x.svg",
+      "clock-arrow-left.svg",
+      "clock.svg",
+      "file-text.svg",
+      "funnel.svg",
+      "inbox.svg",
+      "layers.svg",
+      "message-circle.svg",
+      "monitor.svg",
+      "moon.svg",
+      "search.svg",
+      "server.svg",
+      "settings-2.svg",
+      "shield-check.svg",
+      "sparkles.svg",
+      "sun.svg",
+      "workflow.svg",
+      "x.svg"
+    ],
+    "license": "licenses/lucide-LICENSE"
+  },
+  "colors": {
+    "repository": "https://github.com/radix-ui/colors",
+    "revision": "dbdb85470547c7d34b9001f48fddb08ded335979",
+    "scales": [
+      "slate",
+      "blue",
+      "green",
+      "red",
+      "amber"
+    ],
+    "license": "licenses/radix-colors-LICENSE"
+  }
+}

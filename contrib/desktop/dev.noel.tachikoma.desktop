@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=tachikoma
+Comment=Review service requests, evidence and classifications
+Exec=tachikoma-gui
+Icon=security-high
+Terminal=false
+Categories=System;Security;
+StartupWMClass=dev.noel.tachikoma

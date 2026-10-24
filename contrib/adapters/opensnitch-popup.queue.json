@@ -1,0 +1,128 @@
+{
+  "id": "network.opensnitch-popup",
+  "title": "OpenSnitch popup history",
+  "service_kind": "snitchgate.popup",
+  "schema_id": "network.popup-result.v1",
+  "subject_shape": {
+    "type": "object",
+    "fields": {
+      "origin": {
+        "type": "string",
+        "max_len": 253,
+        "choices": [
+          "opensnitch-popup"
+        ]
+      },
+      "process": {
+        "type": "string",
+        "max_len": 4096,
+        "choices": []
+      },
+      "protocol": {
+        "type": "string",
+        "max_len": 253,
+        "choices": [
+          "tcp",
+          "udp",
+          "icmp",
+          "icmp6",
+          "other"
+        ]
+      },
+      "ip": {
+        "type": "string",
+        "max_len": 253,
+        "choices": []
+      },
+      "host": {
+        "type": "string",
+        "max_len": 253,
+        "choices": []
+      },
+      "result": {
+        "type": "string",
+        "max_len": 253,
+        "choices": [
+          "allow",
+          "deny",
+          "reject",
+          "other"
+        ]
+      },
+      "duration": {
+        "type": "string",
+        "max_len": 253,
+        "choices": [
+          "once",
+          "30s",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "12h",
+          "until restart",
+          "always",
+          "other"
+        ]
+      },
+      "pid": {
+        "type": "integer",
+        "min": 0,
+        "max": 9007199254740991
+      },
+      "uid": {
+        "type": "integer",
+        "min": 0,
+        "max": 9007199254740991
+      },
+      "port": {
+        "type": "integer",
+        "min": 0,
+        "max": 9007199254740991
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "min": 0,
+        "max": 9007199254740991
+      }
+    },
+    "required": [
+      "origin",
+      "process",
+      "protocol",
+      "ip",
+      "host",
+      "result",
+      "duration",
+      "pid",
+      "uid",
+      "port",
+      "observed_at_ms"
+    ]
+  },
+  "actions": [
+    {
+      "id": "record",
+      "label": "Record external popup outcome",
+      "effect": "observe",
+      "scope": {
+        "source": "opensnitch-popup",
+        "mode": "historical-observation-only"
+      }
+    }
+  ],
+  "max_pending": 16,
+  "deadline_cap_ms": 3600000,
+  "scheduling_class": "background",
+  "mode": "policy",
+  "rules": [
+    {
+      "id": "record-popup-history",
+      "equals": {
+        "origin": "opensnitch-popup"
+      },
+      "action": "record"
+    }
+  ],
+  "assessment": null
+}
