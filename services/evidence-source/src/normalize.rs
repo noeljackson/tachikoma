@@ -33,7 +33,7 @@ fn text(value: &Value, limit: usize) -> Option<String> {
         .map(str::to_owned)
 }
 fn process(value: &Value) -> Value {
-    json!({"pid":value["pid"].as_u64(),"path":text(&value["binary"],1024),"exec_id":text(&value["exec_id"],512),"start_time":text(&value["start_time"],64),"uid":value["uid"].as_u64()})
+    json!({"pid":value["pid"].as_u64().filter(|n|*n<=u32::MAX as u64),"path":text(&value["binary"],1024),"exec_id":text(&value["exec_id"],512),"start_time":text(&value["start_time"],64),"uid":value["uid"].as_u64().filter(|n|*n<=u32::MAX as u64)})
 }
 pub fn observation(
     format: Format,
@@ -81,6 +81,15 @@ pub fn observation(
             } else {
                 return Ok(None);
             };
+            // Some real kernel events have no attributed executable. Do not
+            // invent it or block all subsequent records on a schema rejection.
+            if data["process"]["pid"].is_null()
+                || data["process"]["path"]
+                    .as_str()
+                    .is_none_or(|p| p.is_empty())
+            {
+                return Ok(None);
+            }
             Observation {
                 id: String::new(),
                 queue: queue.into(),
@@ -175,6 +184,15 @@ mod tests {
         let event = json!({"timestamp":"2000-01-01T00:00:00Z","event_type":"alert"});
         assert!(
             observation(Format::Suricata, "q", event, &[])
+                .unwrap()
+                .is_none()
+        );
+    }
+    #[test]
+    fn unattributed_tetragon_records_do_not_invent_an_executable_or_stall_ingestion() {
+        let event = json!({"time":time(),"process_kprobe":{"policy_name":"credentials","process":{"pid":42},"parent":{"binary":"/usr/bin/node"}}});
+        assert!(
+            observation(Format::Tetragon, "q", event, &["credentials".into()])
                 .unwrap()
                 .is_none()
         );

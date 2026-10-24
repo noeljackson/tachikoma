@@ -57,7 +57,8 @@ excluding payloads, HTTP headers, URLs and file contents.
 Followers start at EOF, retry failed delivery without advancing the record, and
 follow rotations. Records larger than 64 KiB stop collection and mark it degraded.
 `--once` imports at most 200 records from a 4 MiB tail, then marks the publisher
-stopped. Original timestamps are preserved; stale records are never relabeled as
+stopped. Unattributed Tetragon records are skipped without inventing an executable.
+Original timestamps are preserved; stale records are never relabeled as
 fresh. Restart gaps and upstream sensor health remain unknown: a heartbeat means
 the adapter can watch its input, not that the upstream sensor captured everything.
 
@@ -74,7 +75,8 @@ are available through `/assessment/judgments/`; they remain model opinions.
 
 An `observed` predicate names a source, capability, lookback window and explicit
 join fields. For example, `/process/exec_id` can join a request's stable execution
-identity. Multiple joins must all match; missing or null identities are unknown.
+identity. Multiple joins must all match; missing, null, blank or non-scalar identities are unknown.
+Join fields must be nonblank strings or interoperable integers.
 The evaluator never substitutes a PID or hostname for a missing join. The author
 must choose suitable identities: a PID by itself is reusable, and PID/path joins
 in the example detector are approximate context for review, not verified identity.

@@ -430,14 +430,17 @@ impl Store {
                     .map(|(event, request)| {
                         context
                             .pointer(request)
-                            .filter(|v| !v.is_null())
+                            .filter(|v| {
+                                v.as_i64().is_some()
+                                    || v.as_str().is_some_and(|s| !s.trim().is_empty())
+                            })
                             .map(|v| (event, v))
                     })
                     .collect();
                 let Some(values) = values else {
                     return Ok(trace(
                         MatchState::Unknown,
-                        "Correlation identity missing; no PID-only or null fallback",
+                        "Correlation identity missing or non-scalar; no empty, PID-only or null fallback",
                     ));
                 };
                 let rows=self.db.prepare("SELECT body,digest FROM evidence_observations WHERE source=?1 AND revision=?2 AND queue=?3 AND capability=?4 AND observed>=?5 AND observed<=?6 AND writer NOT IN(SELECT id FROM revoked_principals) ORDER BY observed DESC LIMIT 129")?.query_map(params![source,info.revision,review.request.queue,capability,review.created_at_ms-within_ms,review.created_at_ms],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
@@ -689,6 +692,16 @@ mod tests {
         store
             .put_evidence_policy(&admin, policy(observed()))
             .unwrap();
+        for identity in [value!(""), value!({}), Value::Null] {
+            let context = value!({"subject":{"entity":identity}});
+            assert_eq!(
+                store
+                    .evaluate_condition(&observed(), &review, &context)
+                    .unwrap()
+                    .state,
+                MatchState::Unknown
+            );
+        }
         store
             .source_heartbeat(
                 &source,
