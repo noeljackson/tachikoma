@@ -1,3 +1,5 @@
+#[path = "evidence.rs"]
+mod evidence;
 use approval_protocol::*;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Serialize, de::DeserializeOwned};
@@ -109,7 +111,7 @@ impl Principal {
             || self.spec.queues.iter().any(|q| q == queue)
     }
     fn read(&self, review: &Review) -> bool {
-        self.spec.role != Role::Monitor
+        !matches!(self.spec.role, Role::Monitor | Role::Source)
             && self.queue(&review.request.queue)
             && (self.spec.role != Role::Producer || self.spec.id == review.producer)
     }
@@ -225,6 +227,12 @@ impl Store {
     fn init(db: Connection) -> anyhow::Result<Self> {
         db.busy_timeout(std::time::Duration::from_secs(3))?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA max_page_count=262144;
+            CREATE TABLE IF NOT EXISTS evidence_sources(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,spec TEXT NOT NULL,last_seen INTEGER NOT NULL DEFAULT 0,ready INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '',writer TEXT NOT NULL DEFAULT '');
+            CREATE TABLE IF NOT EXISTS evidence_source_revisions(id TEXT NOT NULL,revision INTEGER NOT NULL,spec TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(id,revision));
+            CREATE TABLE IF NOT EXISTS evidence_observations(seq INTEGER PRIMARY KEY AUTOINCREMENT,source TEXT NOT NULL,revision INTEGER NOT NULL,id TEXT NOT NULL,queue TEXT NOT NULL,capability TEXT NOT NULL,observed INTEGER NOT NULL,received INTEGER NOT NULL,digest TEXT NOT NULL,body TEXT NOT NULL,writer TEXT NOT NULL,UNIQUE(source,revision,id));
+            CREATE INDEX IF NOT EXISTS evidence_lookup ON evidence_observations(source,revision,queue,capability,observed);
+            CREATE TABLE IF NOT EXISTS evidence_policies(queue TEXT PRIMARY KEY,revision INTEGER NOT NULL,body TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS evidence_policy_revisions(queue TEXT NOT NULL,revision INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(queue,revision));
             CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY);
             INSERT OR IGNORE INTO schema_version VALUES(1);
             CREATE TABLE IF NOT EXISTS principals(id TEXT PRIMARY KEY,hash TEXT UNIQUE NOT NULL,spec TEXT NOT NULL,last_seen INTEGER NOT NULL,detail TEXT NOT NULL);
@@ -278,6 +286,7 @@ impl Store {
             || spec.realm.len() > 128
             || spec.realm.chars().any(char::is_control)
             || (spec.role != Role::Admin && spec.queues.is_empty())
+            || (spec.role == Role::Source && !identifier(&spec.realm))
             || (spec.role == Role::Producer && !identifier(&spec.service_kind))
             || (spec.role == Role::Transport && (spec.realm.is_empty() || spec.actors.is_empty()))
         {
@@ -356,6 +365,10 @@ impl Store {
             params![identity, now_ms()],
         )?;
         tx.execute("INSERT INTO administrative_events(actor,kind,subject,at) VALUES(?1,'principal_revoked',?2,?3)", params![actor.spec.id, identity, now_ms()])?;
+        // Source-key revocation/rotation fences previously published evidence too,
+        // including observations accepted before the first publisher heartbeat.
+        tx.execute("INSERT INTO evidence_source_revisions SELECT id,revision+1,spec,?1 FROM evidence_sources WHERE writer=?2 OR id=(SELECT json_extract(spec,'$.realm') FROM principals WHERE id=?2 AND json_extract(spec,'$.role')='source')",params![now_ms(),identity])?;
+        tx.execute("UPDATE evidence_sources SET revision=revision+1,last_seen=0,ready=0,detail='',writer='' WHERE writer=?1 OR id=(SELECT json_extract(spec,'$.realm') FROM principals WHERE id=?1 AND json_extract(spec,'$.role')='source')",[identity])?;
         for review in &mut pending {
             review.state = ReviewState::Cancelled;
             tx.execute(
@@ -515,6 +528,9 @@ impl Store {
         })
     }
     pub fn queues(&mut self, actor: &Principal) -> Result<Vec<QueueInfo>> {
+        if actor.spec.role == Role::Source {
+            return Err(Fault::forbidden());
+        }
         self.expire(now_ms())?;
         let ids = self
             .db
@@ -716,6 +732,9 @@ impl Store {
         Ok(review)
     }
     pub fn list(&mut self, actor: &Principal, before: i64, state: &str) -> Result<Reviews> {
+        if actor.spec.role == Role::Source {
+            return Err(Fault::forbidden());
+        }
         self.expire(now_ms())?;
         if !["pending", "history", "all"].contains(&state) {
             return Err(Fault::bad());
@@ -874,7 +893,7 @@ impl Store {
         Ok(review)
     }
     pub fn events(&mut self, actor: &Principal, after: i64) -> Result<Events> {
-        if actor.spec.role == Role::Monitor {
+        if matches!(actor.spec.role, Role::Monitor | Role::Source) {
             return Err(Fault::forbidden());
         }
         self.expire(now_ms())?;

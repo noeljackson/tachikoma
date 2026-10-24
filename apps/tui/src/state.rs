@@ -71,6 +71,8 @@ pub(crate) struct App {
     pub reviews: Vec<Review>,
     pub history: Vec<Review>,
     pub health: Option<Health>,
+    pub sources: Vec<SourceInfo>,
+    pub preview: Option<PolicyPreview>,
     pub queue: Option<String>,
     pub queue_cursor: Option<String>,
     pub selected: Option<String>,

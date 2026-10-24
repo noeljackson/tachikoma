@@ -44,6 +44,16 @@ impl App {
                 }
                 self.connected = true;
                 self.sync();
+                let selected = self.selected.clone();
+                let (sources, preview) = tokio::join!(bounded(client.sources()), async {
+                    if let Some(id) = selected {
+                        bounded(client.policy_preview(&id)).await.ok()
+                    } else {
+                        None
+                    }
+                });
+                self.sources = sources.unwrap_or_default();
+                self.preview = preview;
             }
             Err(_) => {
                 self.connected = false;
@@ -272,6 +282,24 @@ fn details(app: &App) -> String {
         .unwrap_or_else(|| {
             "Classification pending or not requested. Human review remains required.".into()
         });
+    let policy = app
+        .preview
+        .as_ref()
+        .filter(|p| p.request_id == review.id)
+        .map(|p| {
+            format!(
+                "\nEvidence policy — shadow only\n{:?} · revision {}\n{}\n{}\n",
+                p.outcome,
+                p.policy_revision,
+                p.reason,
+                p.traces
+                    .iter()
+                    .map(|t| format!("{}: {:?} — {}", t.rule, t.state, t.reason))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        })
+        .unwrap_or_default();
     let outcome = review
         .decision
         .as_ref()
@@ -296,13 +324,14 @@ fn details(app: &App) -> String {
         .collect::<Vec<_>>()
         .join("\n\n");
     display_text(&format!(
-        "{}\n{} · {:?} · {:?}\n{}s remaining\n\n{}\n\n{}\nActions and exact scopes:\n{}\n\nSubject:\n{}\n\nEvidence:\n{}\n\nRequest: {} / revision {}",
+        "{}\n{} · {:?} · {:?}\n{}s remaining\n\n{}{}\n\n{}\nActions and exact scopes:\n{}\n\nSubject:\n{}\n\nEvidence:\n{}\n\nRequest: {} / revision {}",
         review.request.summary,
         review.request.queue,
         review.state,
         review.mode,
         (review.expires_at_ms - now()).max(0) / 1000,
         classification,
+        policy,
         outcome,
         actions,
         serde_json::to_string_pretty(&review.request.subject).unwrap_or_default(),
@@ -352,6 +381,20 @@ fn draw_health(frame: &mut Frame, area: Rect, app: &App) {
                 queue.manifest.id, queue.manifest.mode, queue.pending, queue.settled
             ))));
         }
+    }
+    lines.push(Line::raw("\nOptional evidence sources:"));
+    for source in &app.sources {
+        lines.push(Line::raw(display_text(&format!(
+            "{} — {}\n{}\nCoverage: {}",
+            source.spec.id,
+            if source.ready {
+                "available"
+            } else {
+                "unavailable"
+            },
+            source.detail,
+            source.spec.coverage
+        ))));
     }
     frame.render_widget(
         Paragraph::new(Text::from(lines))

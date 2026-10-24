@@ -12,6 +12,21 @@ use std::{
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Health,
+    /// Configured optional sources and their current availability.
+    Sources,
+    PutSource {
+        spec: PathBuf,
+    },
+    PutEvidencePolicy {
+        policy: PathBuf,
+    },
+    EvidencePolicy {
+        queue: String,
+    },
+    /// Explain a shadow policy recommendation; never record a decision.
+    Preview {
+        id: String,
+    },
     /// Import legacy proposal metadata as non-authoritative history; leave source data untouched.
     ImportLegacy {
         database: PathBuf,
@@ -114,6 +129,13 @@ pub async fn run(
         Command::Tui { queue } => approval_tui::run(client, queue).await,
         Command::ImportLegacy { database } => import_legacy(&client, &database).await,
         Command::Health => print(&client.health().await?),
+        Command::Sources => print(&client.sources().await?),
+        Command::PutSource { spec } => print(&client.put_source(&read(&spec)?).await?),
+        Command::PutEvidencePolicy { policy } => {
+            print(&client.put_evidence_policy(&read(&policy)?).await?)
+        }
+        Command::EvidencePolicy { queue } => print(&client.evidence_policy(&queue).await?),
+        Command::Preview { id } => print(&client.policy_preview(&id).await?),
         Command::Queues => print(&client.queues().await?),
         Command::PutQueue { manifest } => print(&client.put_queue(&read(&manifest)?).await?),
         Command::Enroll {

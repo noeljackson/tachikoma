@@ -203,6 +203,22 @@ async fn index(
             "<h2>Workers</h2><p>{} ready jobs; {} leased jobs</p>",
             health.ready_jobs, health.leased_jobs
         ));
+        if let Ok(sources) = session.client.sources().await {
+            html.push_str("<h2>Optional evidence sources</h2>");
+            for source in sources {
+                html.push_str(&format!(
+                    "<article><strong>{}</strong><p>{}: {}</p><p>Coverage: {}</p></article>",
+                    escape(&source.spec.title),
+                    if source.ready {
+                        "Available"
+                    } else {
+                        "Unavailable"
+                    },
+                    escape(&source.detail),
+                    escape(&source.spec.coverage)
+                ));
+            }
+        }
         for service in &health.services {
             html.push_str(&format!("<article><strong>{} / {}</strong><p>{}</p><small>Last heartbeat UTC epoch ms: {}</small></article>",escape(&service.service_kind),escape(&service.id),escape(&service.detail),service.last_seen_ms));
         }
@@ -216,6 +232,22 @@ async fn index(
         }
         for review in reviews {
             html.push_str(&render_review(review, &session.csrf));
+            if let Ok(preview) = session.client.policy_preview(&review.id).await {
+                html.push_str(&format!(
+                    "<details><summary>Evidence policy — shadow only</summary><p>{}: {}</p>",
+                    escape(&format!("{:?}", preview.outcome)),
+                    escape(&preview.reason)
+                ));
+                for trace in preview.traces {
+                    html.push_str(&format!(
+                        "<p>{}: {:?} — {}</p>",
+                        escape(&trace.rule),
+                        trace.state,
+                        escape(&trace.reason)
+                    ));
+                }
+                html.push_str("</details>");
+            }
         }
     }
     browser_response(page("Tachikoma", &html, Some(10)).into_response(), cookie)

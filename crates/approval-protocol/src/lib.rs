@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+mod evidence;
+pub use evidence::*;
 
 pub const API_PREFIX: &str = "/api/approval/v1";
 pub const MAX_BODY_BYTES: usize = 65_536;
@@ -16,6 +18,8 @@ pub enum Role {
     Transport,
     /// Queue and process health only; cannot read requests, claim jobs or decide.
     Monitor,
+    /// Can publish only its configured source's observations and health.
+    Source,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

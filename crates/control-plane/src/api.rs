@@ -59,6 +59,15 @@ impl Api {
             .route("/jobs/{id}/fail", post(fail))
             .route("/heartbeat", post(heartbeat))
             .route("/health", get(health))
+            .route("/evidence/sources", get(sources).post(put_source))
+            .route("/evidence/sources/{id}/heartbeat", post(source_heartbeat))
+            .route(
+                "/evidence/sources/{id}/observations",
+                post(publish_observation),
+            )
+            .route("/evidence/policies", post(put_evidence_policy))
+            .route("/evidence/policies/{queue}", get(evidence_policy))
+            .route("/requests/{id}/evidence-preview", get(policy_preview))
             .route("/transport/route", get(route).post(register_route))
             .route("/transport/deliveries", get(deliveries).post(reserve))
             .route("/transport/deliveries/{id}/delivered", post(delivered))
@@ -112,6 +121,72 @@ impl IntoResponse for Fault {
     }
 }
 type Reply<T> = std::result::Result<Json<T>, Fault>;
+
+async fn sources(State(api): State<Api>, headers: HeaderMap) -> Reply<Vec<SourceInfo>> {
+    api.call(&headers, false, |s, p| s.sources(p))
+        .await
+        .map(Json)
+}
+async fn put_source(State(api): State<Api>, headers: HeaderMap, body: Bytes) -> Reply<SourceInfo> {
+    let input = parse(&body)?;
+    api.call(&headers, true, move |s, p| s.put_source(p, input))
+        .await
+        .map(Json)
+}
+async fn source_heartbeat(
+    State(api): State<Api>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Reply<SourceInfo> {
+    let input = parse(&body)?;
+    api.call(&headers, false, move |s, p| {
+        s.source_heartbeat(p, &id, input)
+    })
+    .await
+    .map(Json)
+}
+async fn publish_observation(
+    State(api): State<Api>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Reply<ObservationReceipt> {
+    let input = parse(&body)?;
+    api.call(&headers, true, move |s, p| {
+        s.publish_observation(p, &id, input)
+    })
+    .await
+    .map(Json)
+}
+async fn evidence_policy(
+    State(api): State<Api>,
+    headers: HeaderMap,
+    Path(queue): Path<String>,
+) -> Reply<Option<EvidencePolicyInfo>> {
+    api.call(&headers, false, move |s, p| s.evidence_policy(p, &queue))
+        .await
+        .map(Json)
+}
+async fn put_evidence_policy(
+    State(api): State<Api>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Reply<EvidencePolicyInfo> {
+    let input = parse(&body)?;
+    api.call(&headers, true, move |s, p| s.put_evidence_policy(p, input))
+        .await
+        .map(Json)
+}
+async fn policy_preview(
+    State(api): State<Api>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Reply<PolicyPreview> {
+    api.call(&headers, false, move |s, p| s.policy_preview(p, &id))
+        .await
+        .map(Json)
+}
 
 // serde_json::Value normally accepts duplicate object keys. Reject them recursively
 // before decoding the public envelope, so hashing and consent have one meaning.

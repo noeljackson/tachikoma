@@ -89,3 +89,8 @@ test-browser:
 install-cli:
 	cargo build --release --locked -p tachikoma --bin tachikoma
 	install -Dm755 target/release/tachikoma "$(INSTALL_BIN_DIR)/tachikoma"
+
+.PHONY: install-source
+install-source:
+	cargo build --release --locked -p tachikoma-source
+	install -Dm755 target/release/tachikoma-source "$(INSTALL_BIN_DIR)/tachikoma-source"

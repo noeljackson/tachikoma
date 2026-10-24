@@ -3067,6 +3067,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tachikoma-source"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "approval-client",
+ "approval-protocol",
+ "clap",
+ "serde_json",
+ "sha2",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

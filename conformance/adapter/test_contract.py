@@ -90,8 +90,8 @@ class ContractTests(unittest.TestCase):
         for fixture in self.fixtures:
             fixture.close()
         self.directory.cleanup()
-    def enroll(self, name, role, queue, kind="example"):
-        value = self.admin.call("POST", "/principals", {"id": name, "role": role, "queues": [queue], "service_kind": kind, "realm": "", "actors": []})
+    def enroll(self, name, role, queue, kind="example", realm=""):
+        value = self.admin.call("POST", "/principals", {"id": name, "role": role, "queues": [queue], "service_kind": kind, "realm": realm, "actors": []})
         path = self.root / (name + ".token")
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w") as file:
@@ -123,6 +123,32 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(first, self.read_state(state))
         receipt = self.admin.call("GET", f"/requests/{review['id']}")["receipt"]
         self.assertEqual(receipt["state"], "enforced")
+    def test_optional_jsonl_source_correlates_with_an_independent_service_without_deciding(self):
+        self.admin.call('POST','/queues',self.example_queue())
+        spec={'id':'external.sensor','title':'External fixture sensor','adapter':'jsonl','enabled':True,'queues':['example.review'],'max_age_ms':30000,'coverage':'Fixture records only','capabilities':{'example.scan':{'type':'object','fields':{'entity':{'type':'string','max_len':128}},'required':['entity']}}}
+        self.admin.call('POST','/evidence/sources',spec)
+        source=self.enroll('sensor','source','example.review',realm='external.sensor')
+        producer=self.enroll('example-producer','producer','example.review')
+        source_api=external.API(self.socket,source)
+        path=self.root/'observations.jsonl';path.touch()
+        collector=self.child([str(ROOT/'target/debug/tachikoma-source'),'--socket',str(self.socket),'--credential',str(source),'--source','external.sensor','--queue','example.review','--format','jsonl','--input',str(path)])
+        until(lambda:self.admin.call('GET','/evidence/sources')[0]['ready'])
+        event={'id':'fixture-scan','queue':'example.review','capability':'example.scan','observed_at_ms':int(time.time()*1000)-100,'data':{'entity':'example.invalid'}}
+        with path.open('a') as file:file.write(json.dumps(event)+'\n')
+        self.run_example(producer,self.root/'shadow.json')
+        review=self.pending('example.review')
+        policy={'queue':'example.review','default':{'kind':'ask'},'rules':[{'id':'scan-match','description':'Independent source and producer correlation','requires':[],'when':{'op':'observed','source':'external.sensor','capability':'example.scan','within_ms':30000,'joins':{'/entity':'/subject/target'},'equals':{}},'then':{'kind':'action','action_id':'allow-once'},'on_unavailable':'ask'}]}
+        self.admin.call('POST','/evidence/policies',policy)
+        preview=until(lambda:(p if p['outcome']['kind']=='action' else None) if (p:=self.admin.call('GET',f"/requests/{review['id']}/evidence-preview")) else None)
+        self.assertFalse(preview['authoritative'])
+        self.assertEqual(preview['traces'][0]['observations'][0]['id'],'fixture-scan')
+        self.assertIsNone(self.admin.call('GET','/requests/'+review['id'])['decision'])
+        with self.assertRaises(RuntimeError):source_api.call('GET','/requests')
+        with self.assertRaises(RuntimeError):source_api.call('POST','/evidence/policies',policy)
+        with self.assertRaises(RuntimeError):source_api.call('POST','/evidence/sources/other/observations',event)
+        self.admin.call('POST','/principals/sensor/revoke',{})
+        self.assertEqual(self.admin.call('GET',f"/requests/{review['id']}/evidence-preview")['outcome']['kind'],'ask')
+        collector.terminate();collector.wait(timeout=5)
     def test_restart_after_consumption_reports_unknown_without_repeating_effect(self):
         self.admin.call("POST", "/queues", self.example_queue())
         token = self.enroll("external", "producer", "example.review")

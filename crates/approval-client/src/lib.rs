@@ -116,6 +116,62 @@ impl Client {
     pub async fn queues(&self) -> Result<Vec<QueueInfo>> {
         self.call(Method::GET, "/queues", None::<&()>).await
     }
+    pub async fn sources(&self) -> Result<Vec<SourceInfo>> {
+        self.call(Method::GET, "/evidence/sources", None::<&()>)
+            .await
+    }
+    pub async fn put_source(&self, spec: &SourceSpec) -> Result<SourceInfo> {
+        self.call(Method::POST, "/evidence/sources", Some(spec))
+            .await
+    }
+    pub async fn source_heartbeat(
+        &self,
+        id: &str,
+        heartbeat: &SourceHeartbeat,
+    ) -> Result<SourceInfo> {
+        Self::valid_id(id)?;
+        self.call(
+            Method::POST,
+            &format!("/evidence/sources/{id}/heartbeat"),
+            Some(heartbeat),
+        )
+        .await
+    }
+    pub async fn publish_observation(
+        &self,
+        id: &str,
+        observation: &Observation,
+    ) -> Result<ObservationReceipt> {
+        Self::valid_id(id)?;
+        self.call(
+            Method::POST,
+            &format!("/evidence/sources/{id}/observations"),
+            Some(observation),
+        )
+        .await
+    }
+    pub async fn evidence_policy(&self, queue: &str) -> Result<Option<EvidencePolicyInfo>> {
+        Self::valid_id(queue)?;
+        self.call(
+            Method::GET,
+            &format!("/evidence/policies/{queue}"),
+            None::<&()>,
+        )
+        .await
+    }
+    pub async fn put_evidence_policy(&self, policy: &EvidencePolicy) -> Result<EvidencePolicyInfo> {
+        self.call(Method::POST, "/evidence/policies", Some(policy))
+            .await
+    }
+    pub async fn policy_preview(&self, id: &str) -> Result<PolicyPreview> {
+        Self::valid_id(id)?;
+        self.call(
+            Method::GET,
+            &format!("/requests/{id}/evidence-preview"),
+            None::<&()>,
+        )
+        .await
+    }
     pub async fn put_queue(&self, queue: &QueueManifest) -> Result<QueueInfo> {
         self.call(Method::POST, "/queues", Some(queue)).await
     }

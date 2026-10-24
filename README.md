@@ -68,6 +68,12 @@ not automatically replaced with another actionable request.
 Use `make install-cli` to update the terminal client separately. Restart an
 already open TUI to load the new keyboard controls.
 
+Optional [evidence sources and shadow policies](docs/evidence-policies.md) combine
+request facts, Jev judgments and correlated observations. Tetragon, Suricata and
+custom JSONL publishers are independent optional adapters. Source availability
+appears in Health, and rule explanations appear with reviews. Evidence-policy
+previews never record decisions or enable automatic permissions.
+
 Open <http://127.0.0.1:7447/approval/> directly; no web sign-in or credential entry
 is required on this local workstation. The daemon keeps its own limited reviewer
 capability server-side. Same-origin submissions and CSRF protection remain
