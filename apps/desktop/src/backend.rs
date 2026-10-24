@@ -80,9 +80,9 @@ impl Backend {
     }
 }
 pub fn demo_review() -> Review {
-    serde_json::from_value(serde_json::json!({
-        "id":"demo-network-request", "producer":"workstation-network", "service_kind":"network", "revision":1, "manifest_revision":1,
-        "request":{"queue":"network.egress", "producer_request_id":"demo", "nonce":"demo", "idempotency_key":"demo", "schema_id":"network.v1",
+    let mut review: Review = serde_json::from_value(serde_json::json!({
+        "id":"demo-network-request", "producer":"workstation-network", "service_kind":"snitchgate", "revision":1, "manifest_revision":1,
+        "request":{"queue":"network.egress", "producer_request_id":"demo", "nonce":"demo", "idempotency_key":"demo", "schema_id":"network.connect.v1",
             "subject":{"process":"/usr/bin/node", "host":"registry.example.invalid", "ip":"192.0.2.10", "port":443,"pid":1432,"uid":1000,"protocol":"tcp"},
             "evidence":{"process_context":{"working_directory":"/home/noel/src/example","ancestors":[{"path":"/usr/bin/npm"}],"lifecycle_event":"install"}, "url_hints":["https://registry.example.invalid/example-package"],"coverage":"Illustrative metadata; encrypted HTTP contents unavailable"},
             "summary":"node → registry.example.invalid:443", "action_ids":["allow-once","deny-once","allow-five-minutes"], "expires_at_ms":now_ms()+3600000},
@@ -93,11 +93,32 @@ pub fn demo_review() -> Review {
             {"id":"allow-five-minutes", "label":"Allow for 5 minutes", "effect":"permit", "scope":{"duration":"five-minutes"}}],
         "assessment":{"state":"complete","category":"needs_review","confidence":0.84,"rationale":"The destination resembles a package registry, but process identity and a familiar hostname cannot establish that the package is safe. Inspect lifecycle context and available sensor evidence.","jev_model":"Jev","llm_model":"qwen3.5:9b","evidence_digest":"demo-evidence","completed_at_ms":now_ms(),"judgments":{"activity":{"choice":"package_download","confidence":0.91}}},
         "decision":null,"receipt":null
-    })).expect("checked built-in desktop fixture")
+    })).expect("checked built-in desktop fixture");
+    let queue: QueueManifest = serde_json::from_str(include_str!(
+        "../../../contrib/adapters/snitchgate.queue.json"
+    ))
+    .expect("checked example manifest");
+    review.actions = queue.actions;
+    review.request.action_ids = review
+        .actions
+        .iter()
+        .map(|action| action.id.clone())
+        .collect();
+    review
 }
 fn demo_snapshot() -> Snapshot {
     let review = demo_review();
+    let manifest: QueueManifest = serde_json::from_str(include_str!(
+        "../../../contrib/adapters/snitchgate.queue.json"
+    ))
+    .expect("checked example queue");
     Snapshot {
+        queues: vec![QueueInfo {
+            manifest,
+            revision: 1,
+            pending: 1,
+            settled: 0,
+        }],
         pending: vec![review.clone()],
         selected: Some(review),
         ..Default::default()

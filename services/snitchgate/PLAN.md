@@ -33,7 +33,8 @@ Captured hostname and executable path do not prove identity or intent.
 - Rust CLI and Ratatui Inbox, History, and Health views, plus an offline demo.
 - OpenSnitch 1.7.2 gRPC interface: Ping, Subscribe, AskRule, Notifications,
   PostAlert; no management notifications are emitted.
-- Temporary decisions with process/user/protocol/IP/port constraints.
+- Once and reusable human decisions, with explicit executable/user/destination
+  scopes, until-restart and persisted forever rules; automatic decisions stay once.
 - Bounded queue, independent deadlines, deny-once fallback, duplicate-decision
   rejection, and SQLite history with configured row retention.
 - Jev HTTP adapter and strict category/confidence parsing; Ollama explanation
@@ -144,3 +145,10 @@ as the active UI server:
 - [TypeSafe System One API](https://docs.typesafe.ai/api/system-one)
 - [Ollama chat API](https://docs.ollama.com/api/chat)
 - [Ratatui](https://ratatui.rs/)
+
+Human reusable permissions now use OpenSnitch's native duration handling. Real-daemon
+checks run in independent network/mount namespaces and prove any-destination reuse,
+until-restart expiry, forever persistence/reload, and executable/UID boundaries.
+Workstation installation updates available choices, not host permissions; only an
+explicit review decision creates a rule. Existing curated policy remains the
+workstation's durable source of truth.

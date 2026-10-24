@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Tachikoma
+Name=tachikoma
 Comment=Review service requests, evidence and classifications
 Exec=tachikoma-gui
 Icon=security-high

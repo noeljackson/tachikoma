@@ -71,10 +71,104 @@
     },
     {
       "id": "allow-five-minutes",
-      "label": "Allow for five minutes",
+      "label": "Allow this IP/port for 5 minutes",
       "effect": "permit",
       "scope": {
         "duration": "five-minutes"
+      }
+    },
+    {
+      "id": "deny-five-minutes",
+      "label": "Deny this IP/port for 5 minutes",
+      "effect": "block",
+      "scope": {
+        "duration": "five-minutes"
+      }
+    },
+    {
+      "id": "deny-until-restart",
+      "label": "Deny this IP/port until restart",
+      "effect": "block",
+      "scope": {
+        "duration": "until-restart"
+      }
+    },
+    {
+      "id": "deny-executable-five-minutes",
+      "label": "Deny executable everywhere for 5 minutes",
+      "effect": "block",
+      "scope": {
+        "duration": "five-minutes",
+        "match": "executable"
+      }
+    },
+    {
+      "id": "deny-executable-until-restart",
+      "label": "Deny executable everywhere until restart",
+      "effect": "block",
+      "scope": {
+        "duration": "until-restart",
+        "match": "executable"
+      }
+    },
+    {
+      "id": "allow-until-restart",
+      "label": "Allow this IP/port until restart",
+      "effect": "permit",
+      "scope": {
+        "duration": "until-restart"
+      }
+    },
+    {
+      "id": "allow-forever",
+      "label": "Allow this IP/port forever",
+      "effect": "permit",
+      "scope": {
+        "duration": "forever"
+      }
+    },
+    {
+      "id": "deny-forever",
+      "label": "Deny this IP/port forever",
+      "effect": "block",
+      "scope": {
+        "duration": "forever"
+      }
+    },
+    {
+      "id": "allow-executable-five-minutes",
+      "label": "Allow executable anywhere for 5 minutes",
+      "effect": "permit",
+      "scope": {
+        "duration": "five-minutes",
+        "match": "executable"
+      }
+    },
+    {
+      "id": "allow-executable-until-restart",
+      "label": "Allow executable anywhere until restart",
+      "effect": "permit",
+      "scope": {
+        "duration": "until-restart",
+        "match": "executable"
+      }
+    },
+    {
+      "id": "allow-executable-forever",
+      "label": "Allow executable anywhere forever",
+      "effect": "permit",
+      "scope": {
+        "duration": "forever",
+        "match": "executable"
+      }
+    },
+    {
+      "id": "deny-executable-forever",
+      "label": "Deny executable everywhere forever",
+      "effect": "block",
+      "scope": {
+        "duration": "forever",
+        "match": "executable"
       }
     }
   ],

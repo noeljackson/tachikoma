@@ -1,7 +1,7 @@
 # Snitchgate
 
 A terminal control room for OpenSnitch, built in Rust with Ratatui. A background
-broker handles pending requests while the TUI provides inspection and temporary
+broker handles pending requests while the TUI provides inspection and scoped
 allow/deny decisions. Optional Jev classification and Ollama explanations help
 triage requests; deterministic policy controls automation.
 
@@ -15,7 +15,7 @@ action; starting the service does not change firewall configuration.
 In this monorepo, run the commands below from the workspace root. Requires
 Linux, Rust 1.96 or newer and `protoc`; SQLite is bundled.
 The optional [Tachikoma connection](../../docs/approval-operations.md) centralizes
-review while preserving this broker’s local deadlines and temporary-rule limits.
+review while preserving this broker’s local deadlines and human-only reusable permissions.
 
 ```sh
 cargo run -p snitchgate -- demo
@@ -301,6 +301,31 @@ so high volume can expire before delivery. Existing TUI review remains available
 `ApprovalSource`, `ApprovalAdapter`, `Review`, and `Reply` separate transport from
 decisions. A future Telegram adapter can use the same inbox, deadline, and
 one-shot decision flow. Telegram transport itself is not implemented yet.
+
+## Reusable human permissions
+
+In central manual mode, the desktop and TUI offer once, five-minute,
+until-OpenSnitch-restart and forever allow/deny decisions. For reusable choices,
+select the captured executable path + UID + current IP/port/protocol, or the
+executable path + UID at every destination and TCP/UDP port. Unattributed or
+relative-path requests offer only once. Broader scopes never match another UID
+or a different executable path. The path match includes future programs installed
+there; it is not a verified file-content identity.
+
+All scopes are fixed adapter code and must exactly match the queue manifest and
+immutable request bindings. Broad/persistent choices require manual human review;
+model text and automatic policy cannot generate them. Desktop and TUI ask for
+confirmation; Slack uses explicit confirmation dialogs and hides choices whose
+complete identity cannot fit. Threaded yes/no remains strictly once, even when
+multiple deny durations are offered. Expiry, failure and shutdown deny once.
+
+OpenSnitch receives `5m`, `until restart` or `always` as its native rule duration.
+It persists only the forever rules; isolated real-daemon tests verify reuse,
+restart expiry/reload, UID and path boundaries. The central decision UUID is
+included in the rule name and local audit. Producer receipts include that name
+while reporting daemon/kernel acknowledgement as unavailable. Review, promote or
+revoke durable rules through the workstation's normal OpenSnitch policy workflow.
+No permanent host rule is created by installation or tests.
 
 ## Durable rule proposals
 

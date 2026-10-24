@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
         Router::new().route("/", get(|| async { Redirect::to("/approval/") }))
             .nest("/approval/", approval_web::router(client))
     } else {
-        Router::new().route("/", get(|| async { "Tachikoma now uses a native desktop interface. Open Tachikoma from your launcher or run tachikoma-gui. The terminal interface is available with tachikoma tui." }))
+        Router::new().route("/", get(|| async { "Open tachikoma from your launcher or run tachikoma-gui. Terminal review is also available." }))
     }.route("/health", get(|| async { "OK" }));
     notify_ready()?;
     eprintln!(

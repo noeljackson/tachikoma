@@ -354,7 +354,7 @@ fn draw_details(frame: &mut Frame, area: Rect, app: &App) {
 }
 fn draw_health(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines = vec![Line::raw(if app.connected {
-        "Connected to Tachikoma"
+        "Connected to tachikoma"
     } else {
         "Disconnected — review disabled"
     })];
@@ -576,7 +576,7 @@ fn draw_menu(frame: &mut Frame, app: &App) {
     frame.render_widget(block, area);
     match menu {
         Menu::Help => {
-            let help = "REVIEW\n←/→ or Tab/Shift+Tab: move between panes\n↑/↓ or j/k: navigate the focused pane\nEnter: open details, then actions\ny/n: allow once / deny once (a/d aliases)\ns: other permit scopes; Enter applies the displayed scope\nc or i: investigate the selected request\n/: filter requests · Esc: clear filter or go back\n1/2/3: Inbox / History / Health · r: refresh\nq or Ctrl-C: quit outside text editing\n\nTEXT INPUT\nArrow keys/Home/End edit text; Backspace/Delete remove text\nEnter sends chat; Alt+Enter inserts a newline\nTab switches transcript/composer; F2 opens model selection\nEsc leaves the composer, then returns to review\nCtrl-C cancels a turn; Ctrl-U clears a draft\nPasted text never triggers review shortcuts.\n\nEsc closes this help.";
+            let help = "REVIEW\n←/→ or Tab/Shift+Tab: move between panes\n↑/↓ or j/k: navigate the focused pane\nEnter: open details, then actions\ny/n: allow once / deny once (a/d aliases)\ns: other permit scopes; Enter reviews, then confirms the scope\nc or i: investigate the selected request\n/: filter requests · Esc: clear filter or go back\n1/2/3: Inbox / History / Health · r: refresh\nq or Ctrl-C: quit outside text editing\n\nTEXT INPUT\nArrow keys/Home/End edit text; Backspace/Delete remove text\nEnter sends chat; Alt+Enter inserts a newline\nTab switches transcript/composer; F2 opens model selection\nEsc leaves the composer, then returns to review\nCtrl-C cancels a turn; Ctrl-U clears a draft\nPasted text never triggers review shortcuts.\n\nEsc closes this help.";
             let compact = "←→ / Tab: focus panes · ↑↓ / j/k: navigate\nEnter: details/actions · y/n: once\ns: scopes · c/i: investigate · /: filter\n1/2/3: Inbox/History/Health · r: refresh\nTyping: arrows/Home/End edit · Ctrl-U clear\nChat: Enter send · Alt+Enter newline\nTab: transcript/composer · F2: model\nCtrl-C: cancel turn · Esc: back\nq: quit outside editors · Esc: close help";
             frame.render_widget(
                 Paragraph::new(if inner.height < 24 { compact } else { help })
@@ -617,9 +617,32 @@ fn draw_menu(frame: &mut Frame, app: &App) {
                 &mut ListState::default().with_selected(Some(menu.index)),
             );
             let action = &menu.actions[menu.index];
+            let binding = app
+                .selected()
+                .filter(|review| review.id == menu.target.id)
+                .map(|review| {
+                    if review.request.schema_id == "network.connect.v1" {
+                        format!(
+                            "Executable path: {}\nUser: {}\n{}\n",
+                            review.request.subject["process"]
+                                .as_str()
+                                .unwrap_or("Unattributed"),
+                            review.request.subject["uid"],
+                            if action.scope["match"] == "executable" {
+                                "Any IP, port, TCP/UDP. Includes future programs at this path."
+                            } else {
+                                "Current IP/port and protocol only."
+                            }
+                        )
+                    } else {
+                        String::new()
+                    }
+                })
+                .unwrap_or_default();
             let scope = display_text(&format!(
-                "{}\n\nExact scope:\n{}",
+                "{}\n{}\nExact scope:\n{}",
                 action.label,
+                binding,
                 serde_json::to_string_pretty(&action.scope).unwrap_or_default()
             ));
             frame.render_widget(
@@ -630,7 +653,11 @@ fn draw_menu(frame: &mut Frame, app: &App) {
             );
             frame.render_widget(
                 Paragraph::new(if app.connected {
-                    "Enter applies this action · Esc cancels"
+                    if menu.confirming {
+                        "Enter confirms this exact scope · Esc cancels"
+                    } else {
+                        "Enter reviews this scope · Esc cancels"
+                    }
                 } else {
                     "Disconnected — cannot apply"
                 })
@@ -643,7 +670,7 @@ fn draw_menu(frame: &mut Frame, app: &App) {
 fn draw(frame: &mut Frame, app: &App) {
     if frame.area().width < 70 || frame.area().height < 18 {
         frame.render_widget(
-            Paragraph::new("Tachikoma needs 70 × 18. Resize, or q to quit."),
+            Paragraph::new("tachikoma needs 70 × 18. Resize, or q to quit."),
             frame.area(),
         );
         return;

@@ -1,4 +1,4 @@
-//! Generic Slack transport. Approval authority and durable delivery records live in Tachikoma.
+//! Generic Slack transport. Approval authority and durable delivery records live in tachikoma.
 mod notify;
 mod presentation;
 use presentation::card;
@@ -157,6 +157,20 @@ fn clipped(value: &str, limit: usize) -> String {
 }
 fn visible_action(action: &ReviewAction) -> bool {
     action.scope.to_string().len() <= 1800
+}
+fn threaded_action(review: &Review, permit: bool) -> Option<&ReviewAction> {
+    let effect = if permit {
+        Effect::Permit
+    } else {
+        Effect::Block
+    };
+    let mut actions = review.actions.iter().filter(|action| {
+        action.effect == effect
+            && visible_action(action)
+            && (action.scope == json!({"duration":"once"}) || action.scope == json!({"uses":1}))
+    });
+    let action = actions.next()?;
+    actions.next().is_none().then_some(action)
 }
 fn epoch_ms() -> i64 {
     SystemTime::now()
@@ -396,7 +410,7 @@ async fn main() -> Result<()> {
                     }
                 } else { let _=client.heartbeat("Slack disconnected or route unavailable").await;let _=notify::notify("STATUS=Slack reconnecting"); }
             },
-            Some(envelope)=incoming.recv()=>{match parse(&envelope,&team,&bot){Some(Incoming::Route(route))=>{let _=client.register_route(&route).await;},Some(Incoming::Button{delivery,reply})=>{let _=client.reply(&delivery,&reply).await;},Some(Incoming::Text{actor,channel,thread,permit})=>{if let Ok(deliveries)=client.deliveries().await&& let Some(delivery)=deliveries.iter().find(|d|d.channel==channel&&d.message.as_deref()==Some(thread.as_str())){let actions=delivery.review.actions.iter().filter(|a|visible_action(a) && if permit{a.effect==Effect::Permit}else{a.effect==Effect::Block}).collect::<Vec<_>>();let selected=if permit{actions.iter().find(|a|a.scope==json!({"duration":"once"})).copied().or_else(||(actions.len()==1).then(||actions[0]))}else{(actions.len()==1).then(||actions[0])};if let Some(action)=selected{let _=client.reply(&delivery.id,&DeliveryReply{actor,channel,message:thread,nonce:delivery.nonce.clone(),action_id:action.id.clone()}).await;}}},None=>{}}
+            Some(envelope)=incoming.recv()=>{match parse(&envelope,&team,&bot){Some(Incoming::Route(route))=>{let _=client.register_route(&route).await;},Some(Incoming::Button{delivery,reply})=>{let _=client.reply(&delivery,&reply).await;},Some(Incoming::Text{actor,channel,thread,permit})=>{if let Ok(deliveries)=client.deliveries().await&& let Some(delivery)=deliveries.iter().find(|d|d.channel==channel&&d.message.as_deref()==Some(thread.as_str())){let selected=threaded_action(&delivery.review,permit);if let Some(action)=selected{let _=client.reply(&delivery.id,&DeliveryReply{actor,channel,message:thread,nonce:delivery.nonce.clone(),action_id:action.id.clone()}).await;}}},None=>{}}
             }
         }
     }
@@ -513,7 +527,7 @@ mod tests {
         assert!(body["blocks"].as_array().unwrap().iter().any(|b| {
             b["text"]["text"]
                 .as_str()
-                .is_some_and(|s| s.contains("This connection only · once"))
+                .is_some_and(|s| s.contains("This executable + UID + IP/port + protocol · once"))
         }));
     }
     #[test]
@@ -585,5 +599,58 @@ mod tests {
                 assert!(block["elements"].as_array().unwrap().len() <= 5);
             }
         }
+    }
+    #[test]
+    fn extended_slack_permissions_confirm_and_thread_replies_stay_once() {
+        let mut delivery = sample_delivery();
+        delivery.review.request.schema_id = "network.connect.v1".into();
+        delivery.review.request.subject = json!({"process":"/usr/bin/example","uid":1000,"host":"example.invalid","ip":"192.0.2.1","port":443,"protocol":"tcp"});
+        delivery.review.actions.push(ReviewAction {
+            id: "allow-executable-forever".into(),
+            label: "Allow executable anywhere forever".into(),
+            effect: Effect::Permit,
+            scope: json!({"duration":"forever","match":"executable"}),
+        });
+        delivery.review.actions.push(ReviewAction {
+            id: "deny-forever".into(),
+            label: "Deny this IP/port forever".into(),
+            effect: Effect::Block,
+            scope: json!({"duration":"forever"}),
+        });
+        assert_eq!(threaded_action(&delivery.review, true).unwrap().id, "allow");
+        assert_eq!(threaded_action(&delivery.review, false).unwrap().id, "deny");
+        let body = card(&delivery);
+        let buttons = body["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|block| block["type"] == "actions")
+            .flat_map(|block| block["elements"].as_array().unwrap())
+            .collect::<Vec<_>>();
+        let permanent = buttons
+            .iter()
+            .find(|button| button["text"]["text"] == "Allow executable anywhere forever")
+            .unwrap();
+        assert_eq!(permanent["confirm"]["text"]["type"], "plain_text");
+        let confirmation = permanent["confirm"]["text"]["text"].as_str().unwrap();
+        assert!(confirmation.contains("/usr/bin/example"));
+        assert!(confirmation.contains("1000"));
+        assert!(confirmation.contains("any address"));
+        assert!(confirmation.chars().count() <= 300);
+        delivery
+            .review
+            .actions
+            .retain(|action| action.scope["duration"] != "once");
+        assert!(threaded_action(&delivery.review, true).is_none());
+        assert!(threaded_action(&delivery.review, false).is_none());
+        delivery.review.request.subject["process"] = json!(format!("/{}", "a".repeat(500)));
+        let body = card(&delivery);
+        assert!(
+            !body["blocks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|block| block["type"] == "actions")
+        );
     }
 }

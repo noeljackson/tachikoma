@@ -49,6 +49,8 @@ pub struct State {
     pub refreshing: bool,
     pub notice: String,
     pub confirmation: Option<Confirmation>,
+    pub permission_duration: String,
+    pub permission_any_destination: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -64,6 +66,8 @@ impl Default for State {
             refreshing: false,
             notice: "Connecting to the local approval service…".into(),
             confirmation: None,
+            permission_duration: "once".into(),
+            permission_any_destination: false,
         }
     }
 }
@@ -93,6 +97,12 @@ impl State {
                         .contains(&filter))
             })
             .collect()
+    }
+    pub fn application(review: &Review) -> &str {
+        review.request.subject["process"]
+            .as_str()
+            .filter(|path| !path.is_empty())
+            .unwrap_or(&review.producer)
     }
     pub fn review(&self) -> Option<&Review> {
         let id = self.selected.as_deref()?;
@@ -150,6 +160,8 @@ impl State {
         if self.selected.as_ref() != Some(&id) {
             self.selected = Some(id);
             self.confirmation = None;
+            self.permission_duration = "once".into();
+            self.permission_any_destination = false;
             self.snapshot.selected = None;
             self.snapshot.preview = None;
             self.snapshot.conversation = None;

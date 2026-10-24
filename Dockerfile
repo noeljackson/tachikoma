@@ -91,4 +91,5 @@ RUN apt-get update && apt-get install --yes --no-install-recommends xvfb xauth x
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
     mkdir -p /tmp/desktop-runtime && chmod 700 /tmp/desktop-runtime \
-    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh
+    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh light \
+    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh dark

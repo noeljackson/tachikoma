@@ -43,11 +43,11 @@ impl Ui for OpenSnitch {
             Err(_) => policy::fallback("Request queue full"),
         };
         // Every rule is generated from captured metadata; model prose never enters an operator.
-        Ok(Response::new(policy::rule(
-            &uuid::Uuid::new_v4().to_string(),
-            &connection,
-            &verdict,
-        )))
+        let rule_id = verdict
+            .rule_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        Ok(Response::new(policy::rule(&rule_id, &connection, &verdict)))
     }
     async fn subscribe(
         &self,

@@ -1,4 +1,7 @@
 mod backend;
+mod components;
+mod design;
+mod icons;
 mod state;
 mod view;
 
@@ -9,8 +12,10 @@ use gpui_elements::editable_text::actions::{DEFAULT_INPUT_CONTEXT, default_bindi
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 #[derive(Parser)]
-#[command(about = "Tachikoma native approval inbox")]
+#[command(name = "tachikoma-gui", about = "A local decision system")]
 struct Args {
+    #[arg(long, value_enum)]
+    appearance: Option<design::Appearance>,
     #[arg(long)]
     socket: Option<PathBuf>,
     #[arg(long)]
@@ -44,42 +49,70 @@ fn main() -> Result<()> {
             .enable_all()
             .build()?,
     );
-    gpui_platform::application().run(move |cx: &mut App| {
-        cx.bind_keys(default_bindings().as_keybindings(Some(DEFAULT_INPUT_CONTEXT)));
-        view::bind_keys(cx);
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
-                cx.quit();
+    let preferences_path = state.join("desktop/appearance.json");
+    gpui_platform::application()
+        .with_assets(icons::assets()?)
+        .run(move |cx: &mut App| {
+            cx.bind_keys(default_bindings().as_keybindings(Some(DEFAULT_INPUT_CONTEXT)));
+            view::bind_keys(cx);
+            if args.smoke_test {
+                cx.observe_keystrokes(|event, _, _| eprintln!("Smoke keystroke: {event:?}"))
+                    .detach();
             }
-        })
-        .detach();
-        let bounds = Bounds::centered(None, size(px(1320.), px(860.)), cx);
-        let result = cx.open_window(
-            WindowOptions::new()
-                .window_bounds(Some(WindowBounds::Windowed(bounds)))
-                .window_min_size(Some(size(px(1000.), px(620.))))
-                .app_id(Some("dev.noel.tachikoma".to_owned()))
-                .titlebar(Some(TitlebarOptions {
-                    title: Some("Tachikoma".into()),
-                    ..Default::default()
-                })),
-            |window, cx| cx.new(|cx| view::Desktop::new(backend, runtime, window, cx)),
-        );
-        if let Err(error) = result {
-            eprintln!("Unable to open Tachikoma: {error}");
-            std::process::exit(1);
-        }
-        cx.activate(true);
-        if args.smoke_test {
-            cx.spawn(async move |cx| {
-                cx.background_executor().timer(Duration::from_secs(8)).await;
-                cx.update(|cx| {
-                    eprintln!("Tachikoma native smoke test complete");
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
                     cx.quit();
-                });
+                }
             })
             .detach();
-        }
-    });
+            let bounds = Bounds::centered(None, size(px(1320.), px(860.)), cx);
+            let result = cx.open_window(
+                WindowOptions::new()
+                    .window_bounds(Some(WindowBounds::Windowed(bounds)))
+                    .window_min_size(Some(size(px(1000.), px(620.))))
+                    .app_id(Some("dev.noel.tachikoma".to_owned()))
+                    .titlebar(Some(TitlebarOptions {
+                        title: Some("tachikoma".into()),
+                        ..Default::default()
+                    })),
+                |window, cx| {
+                    cx.new(|cx| {
+                        view::Desktop::new(
+                            backend,
+                            runtime,
+                            args.appearance,
+                            preferences_path,
+                            window,
+                            cx,
+                        )
+                    })
+                },
+            );
+            let handle = match result {
+                Ok(handle) => handle,
+                Err(error) => {
+                    eprintln!("Unable to open decision window: {error}");
+                    std::process::exit(1);
+                }
+            };
+            cx.activate(true);
+            if args.smoke_test {
+                let _ = handle.update(cx, |_, window, _| {
+                    window.on_next_frame(|_, cx| {
+                        eprintln!("Decision UI first frame rendered");
+                        cx.spawn(async move |cx| {
+                            cx.background_executor()
+                                .timer(Duration::from_secs(12))
+                                .await;
+                            cx.update(|cx| {
+                                eprintln!("Decision UI native smoke test complete");
+                                cx.quit();
+                            });
+                        })
+                        .detach();
+                    });
+                });
+            }
+        });
     Ok(())
 }

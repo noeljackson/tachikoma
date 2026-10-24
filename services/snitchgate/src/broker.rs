@@ -1,6 +1,8 @@
 use crate::{
     config::Config,
-    model::{Action, Assessment, Connection, Duration, Entry, Health, Snapshot, Verdict, now},
+    model::{
+        Action, Assessment, Connection, Duration, Entry, Health, MatchScope, Snapshot, Verdict, now,
+    },
     policy, providers,
     store::Store,
 };
@@ -193,11 +195,25 @@ impl Broker {
     }
 
     pub fn decide(&self, id: &str, action: Action, duration: Duration) -> Result<()> {
+        self.decide_scope(id, action, duration, MatchScope::Connection)
+    }
+
+    pub fn decide_scope(
+        &self,
+        id: &str,
+        action: Action,
+        duration: Duration,
+        match_scope: MatchScope,
+    ) -> Result<()> {
         ensure!(
             self.demo || self.config.tachikoma.as_ref().is_none_or(|c| c.shadow),
             "Tachikoma owns review; use its approval interface"
         );
-        if duration != Duration::Once {
+        ensure!(
+            match_scope != MatchScope::Executable || duration != Duration::Once,
+            "executable-wide scopes need a reusable duration"
+        );
+        if duration != Duration::Once || match_scope == MatchScope::Executable {
             let state = self.state.lock().expect("broker lock");
             let entry = &state
                 .pending
@@ -205,8 +221,8 @@ impl Broker {
                 .ok_or_else(|| anyhow!("request expired or already decided"))?
                 .entry;
             ensure!(
-                !entry.connection.process.is_empty(),
-                "unattributed requests support once only"
+                entry.connection.process.starts_with('/'),
+                "extended scopes require an absolute executable path"
             );
         }
         self.finish(
@@ -214,6 +230,8 @@ impl Broker {
             Verdict {
                 action,
                 duration,
+                match_scope,
+                rule_id: None,
                 source: "human".into(),
                 reason: "Explicit user decision".into(),
             },
@@ -263,6 +281,8 @@ impl Broker {
             Verdict {
                 action,
                 duration: Duration::Once,
+                match_scope: MatchScope::Connection,
+                rule_id: None,
                 source: "human".into(),
                 reason: format!("Explicit remote approval by {actor}"),
             },
@@ -373,11 +393,19 @@ impl Broker {
                     .decision
                     .as_ref()
                     .ok_or_else(|| anyhow!("central decision missing"))?;
+                let rule_name = format!(
+                    "snitchgate-{}-{}",
+                    verdict.action.as_str(),
+                    verdict
+                        .rule_id
+                        .as_deref()
+                        .ok_or_else(|| anyhow!("central rule identity missing"))?
+                );
                 let applied = self.finish(&id, verdict).is_ok();
                 let _ = client.receipt(&review.id, &EnforcementReceipt {
                     decision_id: decision.id.clone(),
                     state: if applied { EnforcementState::Unknown } else { EnforcementState::NotEnforced },
-                    reason: if applied { "Broker audited and returned the temporary rule; daemon/kernel acknowledgement is unavailable" } else { "Local request already expired, settled, or could not be audited" }.into(),
+                    reason: if applied { format!("Returned rule {rule_name} to OpenSnitch; daemon/kernel acknowledgement is unavailable") } else { "Local request already expired, settled, or could not be audited".into() },
                     observed_at_ms: i64::try_from(now()).unwrap_or(i64::MAX/1000).saturating_mul(1000),
                 }).await;
                 return Ok(());

@@ -1,6 +1,6 @@
 use crate::{
     config::Scope,
-    model::{Action, Assessment, Category, Connection, Duration, Verdict, now},
+    model::{Action, Assessment, Category, Connection, Duration, MatchScope, Verdict, now},
     protocol::{Operator, Rule},
 };
 use anyhow::{Result, ensure};
@@ -34,6 +34,8 @@ pub fn automatic(
     Some(Verdict {
         action: first.action,
         duration: Duration::Once,
+        match_scope: MatchScope::Connection,
+        rule_id: None,
         source: "automation".into(),
         reason: "Exact owner-configured scope and Jev category/confidence matched".into(),
     })
@@ -50,19 +52,42 @@ fn exact(operand: &str, data: String) -> Operator {
 }
 
 pub fn rule(id: &str, connection: &Connection, verdict: &Verdict) -> Rule {
-    let mut constraints = vec![
-        exact("user.id", connection.uid.to_string()),
-        exact("protocol", connection.protocol.clone()),
-        exact("dest.ip", connection.ip.to_string()),
-        exact("dest.port", connection.port.to_string()),
-    ];
+    let extended = verdict.match_scope == MatchScope::Executable
+        || matches!(verdict.duration, Duration::UntilRestart | Duration::Forever);
+    if extended
+        && (!matches!(verdict.source.as_str(), "human" | "tachikoma")
+            || !connection.process.starts_with('/')
+            || (verdict.match_scope == MatchScope::Executable
+                && verdict.duration == Duration::Once))
+    {
+        return rule(
+            id,
+            connection,
+            &fallback("Extended rules require an attributed human decision"),
+        );
+    }
+    let mut constraints = vec![exact("user.id", connection.uid.to_string())];
+    if verdict.match_scope == MatchScope::Connection {
+        constraints.extend([
+            exact("protocol", connection.protocol.clone()),
+            exact("dest.ip", connection.ip.to_string()),
+            exact("dest.port", connection.port.to_string()),
+        ]);
+    }
     if !connection.process.is_empty() {
         constraints.push(exact("process.path", connection.process.clone()));
     }
     Rule {
         created: now() as i64,
         name: format!("snitchgate-{}-{id}", verdict.action.as_str()),
-        description: "Snitchgate scoped temporary decision".into(),
+        description: format!(
+            "Snitchgate {:?} decision for UID {} executable {} ({:?}); {}",
+            verdict.match_scope,
+            connection.uid,
+            connection.process,
+            verdict.duration,
+            verdict.reason
+        ),
         enabled: true,
         precedence: false,
         nolog: false,
@@ -106,6 +131,8 @@ pub fn fallback(reason: &str) -> Verdict {
     Verdict {
         action: Action::Deny,
         duration: Duration::Once,
+        match_scope: MatchScope::Connection,
+        rule_id: None,
         source: "fallback".into(),
         reason: reason.into(),
     }
@@ -168,5 +195,22 @@ mod tests {
         let mut c = conn();
         c.process.clear();
         assert!(proposal("id", &c, &fallback("timeout"), "test owner and intent").is_err());
+    }
+    #[test]
+    fn model_and_fallback_sources_cannot_emit_broad_or_persistent_rules() {
+        for source in ["automation", "fallback", "model"] {
+            let verdict = Verdict {
+                action: Action::Allow,
+                duration: Duration::Forever,
+                match_scope: MatchScope::Executable,
+                rule_id: None,
+                source: source.into(),
+                reason: "allow everything".into(),
+            };
+            let rule = rule("fixture", &conn(), &verdict);
+            assert_eq!(rule.action, "deny");
+            assert_eq!(rule.duration, "once");
+            assert_eq!(rule.operator.unwrap().list.len(), 5);
+        }
     }
 }

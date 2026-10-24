@@ -1,6 +1,6 @@
 use crate::{
     broker::Broker,
-    model::{Action, Duration, Snapshot},
+    model::{Action, Duration, MatchScope, Snapshot},
     policy,
 };
 use anyhow::{Context, Result, ensure};
@@ -27,6 +27,12 @@ pub enum Command {
         id: String,
         action: Action,
         duration: Duration,
+    },
+    DecideScope {
+        id: String,
+        action: Action,
+        duration: Duration,
+        match_scope: MatchScope,
     },
     RemoteDecide {
         id: String,
@@ -147,6 +153,12 @@ async fn handle(stream: UnixStream, broker: Arc<Broker>) -> Result<()> {
                 action,
                 duration,
             } => broker.decide(&id, action, duration)?,
+            Command::DecideScope {
+                id,
+                action,
+                duration,
+                match_scope,
+            } => broker.decide_scope(&id, action, duration, match_scope)?,
             Command::RemoteDecide { id, action, actor } => {
                 broker.remote_decide(&id, action, &actor)?
             }

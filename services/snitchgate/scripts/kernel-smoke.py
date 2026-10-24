@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = ROOT / "target/debug/snitchgate"
+BIN = ROOT.parents[1] / "target/debug/snitchgate"
 
 
 def wait_for(predicate, seconds=15):
@@ -42,6 +43,12 @@ def control(path, message):
         if result.get("error"):
             raise RuntimeError("isolated broker rejected operation")
         return result
+
+
+def saved_rules(directory):
+    # The isolated daemon saves files as root with a private umask.
+    code = "import json,sys; from pathlib import Path; print(json.dumps([json.loads(p.read_text()) for p in Path(sys.argv[1]).glob('*.json')]))"
+    return json.loads(subprocess.check_output(["sudo", "-n", sys.executable, "-I", "-c", code, str(directory)], text=True))
 
 
 def namespace(root, uid, gid):
@@ -81,7 +88,11 @@ def namespace(root, uid, gid):
 
     fixture = http.server.ThreadingHTTPServer(("127.0.0.1", 18081), Handler)
     threading.Thread(target=fixture.serve_forever, daemon=True).start()
+    second_fixture = http.server.ThreadingHTTPServer(("127.0.0.2", 18082), Handler)
+    threading.Thread(target=second_fixture.serve_forever, daemon=True).start()
     stopped = threading.Event()
+    restart_requested = threading.Event()
+    signal.signal(signal.SIGUSR1, lambda *_: restart_requested.set())
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
     with (root / "daemon-output.log").open("w") as output:
@@ -101,11 +112,22 @@ def namespace(root, uid, gid):
         helper = Path(pwd.getpwuid(uid).pw_dir) / "noelarchy/bin/opensnitch-snitchgate-trial"
         handover = subprocess.Popen([sys.executable, "-I", str(helper), "trial", "--config-file", str(path),
                                     "--runtime-dir", str(root / "trial"), "--abstract-name", abstract_name,
-                                    "--owner-uid", str(uid), "--seconds", "60"], stdout=output, stderr=output)
+                                    "--owner-uid", str(uid), "--seconds", "180"], stdout=output, stderr=output)
         try:
             (root / "namespace.json").write_text(json.dumps({"pid": os.getpid()}))
             os.chown(root / "namespace.json", uid, gid)
+            generation = 0
             while not stopped.wait(0.25):
+                if restart_requested.is_set():
+                    restart_requested.clear()
+                    daemon.terminate(); daemon.wait(timeout=10)
+                    daemon = subprocess.Popen(["/usr/bin/opensnitchd", "-config-file", str(path), "-rules-path", str(rules), "-workers", "2"], stdin=subprocess.DEVNULL, stdout=output, stderr=output)
+                    time.sleep(2)
+                    generation += 1
+                    temporary = root / "namespace.next"
+                    temporary.write_text(json.dumps({"pid":os.getpid(),"generation":generation}))
+                    os.chown(temporary,uid,gid)
+                    temporary.replace(root / "namespace.json")
                 if daemon.poll() is not None:
                     raise RuntimeError("isolated daemon exited; inspect private smoke logs")
         finally:
@@ -123,6 +145,7 @@ def namespace(root, uid, gid):
                     daemon.kill()
                     daemon.wait()
                 fixture.shutdown()
+                second_fixture.shutdown()
                 broker.terminate()
                 broker.wait(timeout=5)
                 for directory, folders, files in os.walk(root):
@@ -171,7 +194,48 @@ def main():
                 else:
                     assert curl.returncode != 0 and not stdout, "denied traffic reached fixture"
                 print(f"isolated kernel enforcement: {action} passed", flush=True)
-            assert not list((root / "rules").glob("*.json")), "temporary decisions persisted"
+            assert not saved_rules(root / "rules"), "temporary decisions persisted"
+            def probe(address="127.0.0.1:18081", executable="/usr/bin/curl", different_user=False):
+                command=["sudo","-n","nsenter","-t",str(child),"-n"]
+                if different_user:
+                    command += ["setpriv","--reuid",str(os.getuid()),"--regid",str(os.getgid()),"--clear-groups"]
+                return subprocess.Popen(command+[executable,"--silent","--show-error","--noproxy","*","--max-time","8",f"http://{address}/"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            def reached(process):
+                stdout,_=process.communicate(timeout=12)
+                assert process.returncode==0 and stdout==b"snitchgate-kernel-fixture", "expected scoped allow did not reach fixture"
+            def restart_daemon(generation):
+                subprocess.run(["sudo","-n","kill","-USR1",str(child)],check=True)
+                wait_for(lambda:json.loads((root/"namespace.json").read_text()).get("generation",0)>=generation)
+            process=probe()
+            entry=wait_for(lambda:control(path,{"command":"snapshot"})["snapshot"]["pending"])[0]
+            control(path,{"command":"decide_scope","id":entry["id"],"action":"allow","duration":"until_restart","match_scope":"executable"})
+            reached(process)
+            reached(probe("127.0.0.2:18082"))
+            assert not control(path,{"command":"snapshot"})["snapshot"]["pending"], "executable scope prompted for another address/port"
+            assert not saved_rules(root/"rules"), "until-restart scope persisted"
+            restart_daemon(1)
+            process=probe("127.0.0.2:18082")
+            entry=wait_for(lambda:control(path,{"command":"snapshot"})["snapshot"]["pending"])[0]
+            control(path,{"command":"decide_scope","id":entry["id"],"action":"allow","duration":"forever","match_scope":"executable"})
+            reached(process)
+            persisted=wait_for(lambda:saved_rules(root/"rules"))
+            assert len(persisted)==1
+            rule=persisted[0]
+            assert rule["duration"]=="always"
+            constraints={operator["operand"]:operator["data"] for operator in rule["operator"]["list"]}
+            assert constraints=={"process.path":"/usr/bin/curl","user.id":str(entry["connection"]["uid"])}, constraints
+            restart_daemon(2)
+            reached(probe())
+            assert not control(path,{"command":"snapshot"})["snapshot"]["pending"], "permanent rule was not reloaded"
+            for executable,different_user in [("/usr/bin/curl",True),(str(root/"other-curl"),False)]:
+                if not different_user:
+                    shutil.copyfile("/usr/bin/curl",root/"other-curl");(root/"other-curl").chmod(0o700)
+                process=probe(executable=executable,different_user=different_user)
+                wait_for(lambda:control(path,{"command":"snapshot"})["snapshot"]["pending"])
+                stdout,_=process.communicate(timeout=12)
+                assert process.returncode!=0 and not stdout, "permanent executable rule crossed a user or path boundary"
+            print("isolated kernel enforcement: executable any-destination, until-restart expiry, permanent reload, UID and path boundaries passed",flush=True)
+
         except BaseException:
             print(f"Private smoke evidence retained at {root}", file=sys.stderr)
             raise
@@ -185,7 +249,7 @@ def main():
                         raise RuntimeError("isolated namespace cleanup or rollback failed")
                 except subprocess.TimeoutExpired:
                     worker.terminate()
-    print("PASS: real daemon allow/deny/timeout, hot handover/rollback, original config unchanged, no permanent rules; host network unchanged.")
+    print("PASS: isolated daemon allow/deny/timeout, reusable scopes, permanent reload and UID/path boundaries; host policy unchanged.")
 
 
 if __name__ == "__main__":

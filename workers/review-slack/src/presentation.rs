@@ -59,13 +59,42 @@ fn confidence(value: Option<f64>) -> String {
         .unwrap_or_else(|| "Confidence unavailable".into())
 }
 fn scope(action: &ReviewAction, network: bool) -> String {
-    if network && action.scope == json!({"duration":"once"}) {
-        "This connection only · once".into()
-    } else if network && action.scope == json!({"duration":"five-minutes"}) {
-        "Matching process and destination · 5 minutes".into()
-    } else {
-        format!("Exact scope: {}", action.scope)
+    if network {
+        for (duration, lifetime) in [
+            ("once", "once"),
+            ("five-minutes", "5 minutes"),
+            ("until-restart", "until OpenSnitch restarts"),
+            ("forever", "forever; persisted across restarts"),
+        ] {
+            if action.scope == json!({"duration":duration}) {
+                return format!("This executable + UID + IP/port + protocol · {lifetime}");
+            }
+            if action.scope == json!({"duration":duration,"match":"executable"}) {
+                return format!("This executable + UID · any address, port, TCP/UDP · {lifetime}");
+            }
+        }
     }
+    format!("Exact scope: {}", action.scope)
+}
+fn extended(action: &ReviewAction) -> bool {
+    action.scope["match"] == "executable"
+        || action.scope["duration"] == "forever"
+        || action.scope["duration"] == "until-restart"
+}
+fn confirmation(review: &Review, action: &ReviewAction) -> Option<String> {
+    let process = review.request.subject["process"].as_str()?;
+    let text = format!(
+        "{}\nExecutable: {}\nUID: {}\n{}\nPath matching also covers future programs installed there.",
+        action.label,
+        process,
+        review.request.subject["uid"],
+        scope(action, true)
+    );
+    (text.chars().count() <= 300 && escaped(process, 12000).chars().count() <= 1000).then_some(text)
+}
+fn visible_in_review(review: &Review, action: &ReviewAction, network: bool) -> bool {
+    visible_action(action)
+        && (!network || !extended(action) || confirmation(review, action).is_some())
 }
 pub(super) fn card(delivery: &Delivery) -> Value {
     let review = &delivery.review;
@@ -213,24 +242,27 @@ pub(super) fn card(delivery: &Delivery) -> Value {
             });
         blocks.push(context(escaped(&outcome, 1500)));
     } else if active {
-        blocks.push(context(format!("Expires <!date^{}^{{time_secs}} ({{date_short}})|at the request deadline> · Classification is advisory",review.expires_at_ms/1000)));
+        blocks.push(context(format!("Expires <!date^{}^{{time_secs}} ({{date_short}})|at the request deadline> · Classification is advisory. Thread yes/no applies once.",review.expires_at_ms/1000)));
         blocks.push(json!({"type":"divider"}));
         for action in &review.actions {
-            blocks.push(section(&if visible_action(action) {
+            blocks.push(section(&if visible_in_review(review, action, network) {
                 format!("{} · {}", action.label, scope(action, network))
             } else {
                 format!(
-                    "{} · Scope too large for Slack. Inspect the full action in Tachikoma.",
+                    "{} · Scope or executable details exceed Slack limits. Inspect and decide in tachikoma.",
                     action.label
                 )
             }));
         }
         let mut primary = false;
         let mut danger = false;
-        let buttons = review.actions.iter().enumerate().filter(|(_,action)|visible_action(action)).map(|(index,action)| {
+        let buttons = review.actions.iter().enumerate().filter(|(_,action)|visible_in_review(review,action,network)).map(|(index,action)| {
             let mut button = json!({"type":"button","text":{"type":"plain_text","text":clipped(&action.label,70)},"action_id":format!("tachikoma_decide_{index}"),"value":json!({"delivery":delivery.id,"nonce":delivery.nonce,"action":action.id}).to_string()});
             if action.effect == Effect::Permit && action.scope == json!({"duration":"once"}) && !primary { button["style"] = json!("primary"); primary = true; }
             if action.effect == Effect::Block && !danger { button["style"] = json!("danger"); danger = true; }
+            if network && extended(action) {
+                button["confirm"]=json!({"title":{"type":"plain_text","text":"Confirm extended permission"},"text":{"type":"plain_text","text":confirmation(review,action).expect("visible extended scope"),"emoji":false},"confirm":{"type":"plain_text","text":"Confirm"},"deny":{"type":"plain_text","text":"Cancel"}});
+            }
             button
         }).collect::<Vec<_>>();
         for chunk in buttons.chunks(5) {

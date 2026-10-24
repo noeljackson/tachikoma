@@ -44,6 +44,7 @@ pub(crate) struct Actions {
     pub index: usize,
     pub scroll: u16,
     pub scopes: bool,
+    pub confirming: bool,
 }
 pub(crate) enum Menu {
     Actions(Actions),
@@ -277,6 +278,7 @@ impl App {
             index: 0,
             scroll: 0,
             scopes: effect.is_some(),
+            confirming: false,
         }));
     }
     fn quick(&mut self, effect: Effect) -> Option<Command> {
@@ -336,10 +338,12 @@ impl App {
             Menu::Actions(mut menu) => {
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
+                        menu.confirming = false;
                         menu.index = menu.index.saturating_sub(1);
                         menu.scroll = 0;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
+                        menu.confirming = false;
                         menu.index = menu.index.saturating_add(1).min(menu.actions.len() - 1);
                         menu.scroll = 0;
                     }
@@ -348,6 +352,14 @@ impl App {
                     KeyCode::Enter => {
                         let action = menu.actions[menu.index].clone();
                         if self.action_current(&menu.target, &action) {
+                            if !menu.confirming
+                                && action.scope != json!({"duration":"once"})
+                                && action.scope != json!({"uses":1})
+                            {
+                                menu.confirming = true;
+                                self.menu = Some(Menu::Actions(menu));
+                                return None;
+                            }
                             return Some(Command::Decide {
                                 target: menu.target,
                                 action,
@@ -752,6 +764,7 @@ mod tests {
         );
         app.key(key(KeyCode::Char('s')));
         assert!(matches!(app.menu, Some(Menu::Actions(_))));
+        assert!(app.key(key(KeyCode::Enter)).is_none());
         assert!(
             matches!(app.key(key(KeyCode::Enter)),Some(Command::Decide{target,action}) if target.id=="first" && action.id=="allow-five-minutes")
         );

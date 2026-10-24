@@ -34,6 +34,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tonic-prost-build = "0.14"
 
 [dev-dependencies]
+sha2 = "0.10"
 tempfile = "3"
 
 [package.metadata.tachikoma]

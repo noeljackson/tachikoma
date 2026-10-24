@@ -1,6 +1,6 @@
-# Tachikoma
+# tachikoma
 
-Tachikoma coordinates approval queues, Jev/LLM assessment, human review and
+tachikoma coordinates approval queues, Jev/LLM assessment, human review and
 an audit trail. Independent services submit requests and validate scoped
 decisions before acting. The daemon has no network-rule writer, Kubernetes
 client, registry proxy, model credentials or command tools.
@@ -19,7 +19,7 @@ This Rust workspace includes:
 
 **Registrygate stays in its own repository and is implemented last.** It will
 run independently with local automatic policy, periodic advisory refresh and
-an optional Tachikoma workflow.
+an optional tachikoma workflow.
 
 The [architecture plan](docs/queue-control-plane.md) explains boundaries and
 migration order. The [adapter guide](docs/adapter-api.md) documents the actual
@@ -75,12 +75,12 @@ custom JSONL publishers are independent optional adapters. Source availability
 appears in Health, and rule explanations appear with reviews. Evidence-policy
 previews never record decisions or enable automatic permissions.
 
-Run `tachikoma-gui` or open **Tachikoma** from the desktop launcher. The
+Run `tachikoma-gui` or open **tachikoma** from the desktop launcher. The
 [native desktop guide](docs/desktop.md) covers installation, keyboard controls,
 private reviewer identity, the pinned upstream GPUI dependency and dependency review.
-The native interface opens without a sign-in form and has Inbox, History,
-Health, classifications, evidence, rule traces, investigations and scoped
-approval controls. The previous browser interface requires `--legacy-web`.
+The native interface opens without a sign-in form and has queues, Pending, History,
+Sources, classifications, evidence, rule traces, investigations and scoped
+approval controls, System/Light/Dark appearance and consistent icons. The previous browser interface requires `--legacy-web`.
 
 To try without installing binaries:
 
@@ -103,7 +103,7 @@ request nonce, revision, manifest revision, action scope and original deadline.
 Shadow and observation decisions are never authoritative.
 
 Producers keep their own deadline and validate every returned scope. Snitchgate
-rejects broader durations and denies once on timeout even if Tachikoma is down.
+rejects broader durations and denies once on timeout even if tachikoma is down.
 Its receipt honestly reports the broker result as `unknown` because OpenSnitch
 provides no kernel acknowledgement. Decision and enforcement outcome are separate.
 Workers use durable jobs, bounded leases and fenced completions. Investigation
@@ -124,7 +124,7 @@ analysis and transcript files in place. They do not revive historical approvals.
 ## Status
 
 The platform and service adapters are implemented and tested with isolated
-fixtures. Noelarchy now deploys the workstation network path through Tachikoma,
+fixtures. Noelarchy now deploys the workstation network path through tachikoma,
 with separate system workers and authenticated health-based GUI fallback. See
 `/home/noel/noelarchy/docs/snitchgate-live.md` for that machine’s deployment and
 rollback workflow. No registry implementation or live Kubernetes executor is included.

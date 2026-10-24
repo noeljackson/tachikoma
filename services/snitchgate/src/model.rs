@@ -170,20 +170,36 @@ impl Action {
 pub enum Duration {
     Once,
     FiveMinutes,
+    UntilRestart,
+    Forever,
 }
 impl Duration {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Once => "once",
             Self::FiveMinutes => "5m",
+            Self::UntilRestart => "until restart",
+            Self::Forever => "always",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchScope {
+    #[default]
+    Connection,
+    Executable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verdict {
     pub action: Action,
     pub duration: Duration,
+    #[serde(default)]
+    pub match_scope: MatchScope,
+    #[serde(default)]
+    pub rule_id: Option<String>,
     pub source: String,
     pub reason: String,
 }
