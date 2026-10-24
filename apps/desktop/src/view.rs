@@ -311,7 +311,14 @@ impl Desktop {
         let mut queues = vec![
             button(
                 "all-queues",
-                format!("All queues    {}", self.state.snapshot.pending.len()),
+                format!(
+                    "All queues    {}",
+                    if self.state.page == Page::History {
+                        self.state.snapshot.history.len()
+                    } else {
+                        self.state.snapshot.pending.len()
+                    }
+                ),
                 if self.state.queue.is_none() {
                     ACCENT
                 } else {
@@ -334,7 +341,15 @@ impl Desktop {
             queues.push(
                 button(
                     SharedString::from(format!("queue-{id}")),
-                    format!("{}    {}", queue.manifest.title, queue.pending),
+                    format!(
+                        "{}    {}",
+                        queue.manifest.title,
+                        if self.state.page == Page::History {
+                            queue.settled
+                        } else {
+                            queue.pending
+                        }
+                    ),
                     if selected { ACCENT } else { MUTED },
                 )
                 .w_full()
