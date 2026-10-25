@@ -86,11 +86,12 @@ class NotificationTests(unittest.TestCase):
                 'schema_id':manifest['schema_id'],'subject':{'process':'/usr/bin/test-fixture','pid':44,'uid':1000,'protocol':'tcp','ip':'192.0.2.1','host':label+'.example.invalid','port':443},
                 'evidence':{},'action_ids':[a['id'] for a in manifest['actions']], 'expires_at_ms':int(time.time()*1000)+seconds*1000,'summary':label})
         def notification(label):
-            return next((i for i,n in shell.notifications.items() if n['summary']==label and i not in shell.closed), None)
+            return next((i for i,n in shell.notifications.items() if n['summary']==f'test-fixture → {label}.example.invalid:443' and i not in shell.closed), None)
         def state(review): return f.admin.call('GET','/requests/'+review['id'])['state']
         first = submit('notification-allow')
         identifier = contract.until(lambda: notification('notification-allow'))
         self.assertEqual(shell.notifications[identifier]['actions'], ['default','Review','allow-once','Allow once','deny-once','Deny once'])
+        self.assertEqual(shell.notifications[identifier]['body'], '')
         # Another bus client cannot forge the daemon's action signal.
         rogue = dbus.SessionBus(private=True)
         rogue.set_exit_on_disconnect(False)

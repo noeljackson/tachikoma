@@ -142,8 +142,10 @@ New pending decisions create freedesktop notifications. Network connection
 requests offer **Allow once** and **Deny once** only when the queue offers those
 exact one-connection actions. Click the notification to investigate or choose
 longer permissions in the full window. Other service schemas open for review.
-Classification updates replace the existing notification without extending its
-original decision deadline. Dismissal leaves a request unanswered; expired or
+Notifications show only the executable basename and destination, such as
+`zsh → api.z.ai:443`, with no body text. Classification and full process details
+remain in the app; assessment updates do not redraw the notification or extend
+its original decision deadline. Dismissal leaves a request unanswered; expired or
 settled requests are closed. An already dismissed request is not repeatedly
 posted during the same desktop session. Restarting the desktop or notification
 server may present requests that are still pending again.

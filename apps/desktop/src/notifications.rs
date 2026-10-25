@@ -118,64 +118,47 @@ fn clean(value: &str, limit: usize) -> String {
         .take(limit)
         .collect()
 }
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
 fn content(review: &Review) -> (String, String, Vec<String>) {
-    let title = clean(&review.request.summary, 160);
-    let mut lines = Vec::new();
-    if review.request.schema_id == "network.connect.v1" {
+    let title = if review.request.schema_id == "network.connect.v1" {
         let subject = &review.request.subject;
-        if let Some(process) = subject["process"].as_str() {
-            lines.push(clean(process, 180));
-        }
+        let process = subject["process"]
+            .as_str()
+            .and_then(|path| std::path::Path::new(path).file_name())
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("Unknown process");
         let host = subject["host"]
             .as_str()
+            .map(str::trim)
             .filter(|s| !s.is_empty())
-            .or(subject["ip"].as_str())
-            .unwrap_or("Destination unavailable");
-        lines.push(format!(
-            "{} · {} · port {}",
-            clean(host, 160),
-            clean(subject["protocol"].as_str().unwrap_or("network"), 12),
-            subject["port"]
-        ));
-    } else {
-        lines.push(clean(&review.request.queue, 100));
-    }
-    if let Some(assessment) = &review.assessment {
-        let category = clean(&assessment.category, 80).replace('_', " ");
-        let label = if category == "unknown" {
-            "Classification inconclusive".into()
+            .or_else(|| {
+                subject["ip"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or("Unknown destination");
+        let host = clean(host, 110);
+        let destination = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
         } else {
-            format!("Assessment: {category}")
+            host
         };
-        lines.push(label);
-        if !assessment.rationale.is_empty() {
-            lines.push(clean(&assessment.rationale, 220));
-        }
+        let port = subject["port"]
+            .as_u64()
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "?".into());
+        format!("{} → {destination}:{port}", clean(process, 40))
     } else {
-        lines.push("Classification pending".into());
-    }
-    lines.push("Dismissal leaves this request unanswered.".into());
+        clean(&review.request.summary, 160)
+    };
     let mut actions = vec!["default".into(), "Review".into()];
     for (key, label) in [("allow-once", "Allow once"), ("deny-once", "Deny once")] {
         if quick_action(review, key).is_some() {
             actions.extend([key.into(), label.into()]);
         }
     }
-    (
-        title,
-        lines
-            .iter()
-            .map(|line| escape(line))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        actions,
-    )
+    (title, String::new(), actions)
 }
 async fn show(proxy: &NotificationsProxy<'_>, review: &Review, replaces: u32) -> Result<Prompt> {
     let (title, body, actions) = content(review);
@@ -384,16 +367,20 @@ mod tests {
         assert!(quick_action(&review, "deny-once").is_none());
     }
     #[test]
-    fn presentation_escapes_untrusted_content_and_keeps_unknown_unscored() {
+    fn presentation_is_a_short_subject_with_details_left_in_the_app() {
         let mut review = crate::backend::demo_review();
-        review.request.subject["process"] = "<b>fake</b>\u{001b}".into();
-        review.assessment.as_mut().unwrap().category = "unknown".into();
-        let (_, body, actions) = content(&review);
-        assert!(body.contains("&lt;b&gt;fake&lt;/b&gt;"));
-        assert!(!body.contains('\u{001b}'));
-        assert!(body.contains("Classification inconclusive"));
-        assert!(!body.contains("84%"));
+        review.request.subject["process"] = "/usr/bin/zsh\u{001b}".into();
+        review.request.subject["host"] = "api.z.ai".into();
+        let (title, body, actions) = content(&review);
+        assert_eq!(title, "zsh → api.z.ai:443");
+        assert!(body.is_empty());
         assert_eq!(actions.len(), 6);
+        let original = signature(&review);
+        review.assessment.as_mut().unwrap().rationale = "New classification details".into();
+        assert_eq!(signature(&review), original);
+        review.request.subject["host"] = "".into();
+        review.request.subject["ip"] = "::1".into();
+        assert_eq!(content(&review).0, "zsh → [::1]:443");
         let mut changed = review.clone();
         changed.evidence_digest = "new".into();
         assert!(!same_binding(&review, &changed));
@@ -482,7 +469,7 @@ mod bus_tests {
         let first = show(&proxy, &review, 0).await.unwrap();
         review.assessment.as_mut().unwrap().rationale = "Updated classification".into();
         let second = show(&proxy, &review, first.id).await.unwrap();
-        assert_ne!(first.content, second.content);
+        assert_eq!(first.content, second.content);
         {
             let data = captured.lock().unwrap();
             assert_eq!(data.replaces, [0, 42]);
