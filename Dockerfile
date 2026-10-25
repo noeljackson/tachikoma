@@ -1,6 +1,6 @@
 FROM rust:1.96-bookworm AS toolchain
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends protobuf-compiler pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev \
+    && apt-get install --yes --no-install-recommends dbus-daemon dbus-bin protobuf-compiler pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev \
         libxcb-shape0-dev libxcb-xfixes0-dev libxcb-randr0-dev libxcb-xinput-dev \
         libegl1-mesa-dev libgles2-mesa-dev libglib2.0-dev libfontconfig-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -33,7 +33,7 @@ RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sh
     --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
     python3 bin/check-boundaries.py \
     && python3 bin/test-boundaries.py \
-    && cargo test --workspace --all-targets --locked \
+    && dbus-run-session -- cargo test --workspace --all-targets --locked \
     && cargo build --workspace --locked \
     && python3 conformance/adapter/test_contract.py \
     && python3 conformance/assessment/test_export.py
@@ -86,10 +86,18 @@ EXPOSE 7447
 ENTRYPOINT ["/usr/local/bin/tachikomad", "--database", "/var/lib/tachikoma/tachikoma.sqlite3", "--rpc-socket", "/tmp/tachikoma.sock", "--listen", "0.0.0.0:7447", "--allow-container-bind"]
 
 # Native window smoke test is isolated from live services and sockets.
-FROM test AS desktop-test
-RUN apt-get update && apt-get install --yes --no-install-recommends xvfb xauth xdotool mesa-vulkan-drivers libvulkan1 fonts-dejavu-core \
+FROM test AS desktop-smoke
+RUN apt-get update && apt-get install --yes --no-install-recommends python3-dbus python3-gi xvfb xauth xdotool mesa-vulkan-drivers libvulkan1 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
     mkdir -p /tmp/desktop-runtime && chmod 700 /tmp/desktop-runtime \
     && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh light \
     && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh dark
+
+FROM desktop-smoke AS notification-tools
+RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
+    install -Dm755 target/debug/tachikoma-gui /out/tachikoma-gui
+ENV TACHIKOMA_TEST_GUI=/out/tachikoma-gui TACHIKOMA_TEST_DAEMON=/out/tachikomad
+FROM notification-tools AS desktop-test
+RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
+    XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a python3 -u conformance/desktop/notifications.py

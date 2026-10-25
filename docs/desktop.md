@@ -129,3 +129,41 @@ They are external observations, not editable or replayable tachikoma approvals.
 The inspector shows the captured connection and reported duration, with explicit
 limits on source scope, interaction and enforcement. Old expired central reviews
 are not changed into approvals by matching process names or destinations.
+
+## Desktop notifications
+
+Run `tachikoma-gui --background` to keep desktop prompts available without a
+window. Closing the window or pressing Ctrl+W leaves notifications running;
+launching `tachikoma-gui` again opens the existing instance. Notification clicks
+open the exact request and clear list filters so the selection is visible.
+The optional `--request REQUEST_ID` also opens a specific decision.
+
+New pending decisions create freedesktop notifications. Network connection
+requests offer **Allow once** and **Deny once** only when the queue offers those
+exact one-connection actions. Click the notification to investigate or choose
+longer permissions in the full window. Other service schemas open for review.
+Classification updates replace the existing notification without extending its
+original decision deadline. Dismissal leaves a request unanswered; expired or
+settled requests are closed. An already dismissed request is not repeatedly
+posted during the same desktop session. Restarting the desktop or notification
+server may present requests that are still pending again.
+
+The desktop uses its existing private reviewer credential. It has no producer,
+policy administration, model credentials or firewall privileges. Action signals
+are accepted only from the current notification daemon's unique bus identity;
+quick decisions refresh the request and validate revision, subject, evidence,
+nonce, offered action and deadline before calling the approval API. Central
+first-writer rules also resolve simultaneous Slack and desktop answers.
+A notification is a review prompt, not evidence of kernel enforcement.
+
+`make install-desktop` installs `tachikoma-desktop.service` but does not start it.
+For a desktop session that provides `graphical-session.target`, enable it with
+`systemctl --user enable --now tachikoma-desktop.service`. Other sessions can
+start the unit explicitly after importing their display environment. Stop the
+unit to stop desktop prompts. The firewall broker remains responsible for
+original deadlines and fail-closed behavior when no reviewer answers.
+
+Docker conformance runs a private notification daemon and real approval core,
+checks once actions, forged signals, dismissal, expiry, cross-client settlement,
+shell restart, launcher forwarding and continued operation after closing a real
+native window. Offline demo mode never connects to notifications or credentials.

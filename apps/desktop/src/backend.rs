@@ -11,7 +11,7 @@ pub struct Backend {
     pub demo: bool,
 }
 impl Backend {
-    fn client(&self) -> Result<Client> {
+    pub(crate) fn client(&self) -> Result<Client> {
         Client::from_credential_file(
             "http://tachikoma.local",
             Some(&self.socket),

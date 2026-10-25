@@ -995,8 +995,10 @@ impl Store {
         let mut services = vec![];
         for (spec, last_seen_ms, detail) in rows {
             let spec: PrincipalSpec = decode(&spec)?;
-            if matches!(spec.role, Role::Producer | Role::Worker | Role::Transport)
+            let desktop = spec.id == "local-desktop" && spec.role == Role::Reviewer;
+            if (matches!(spec.role, Role::Producer | Role::Worker | Role::Transport) || desktop)
                 && (actor.admin()
+                    || (desktop && actor.spec.role != Role::Producer && !queues.is_empty())
                     || spec.id == actor.spec.id
                     || (actor.spec.role != Role::Producer
                         && spec.queues.iter().any(|q| actor.queue(q))))

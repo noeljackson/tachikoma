@@ -266,6 +266,7 @@ dependencies = [
  "approval-protocol",
  "clap",
  "dirs 6.0.0",
+ "futures-util",
  "gpui-ce",
  "gpui_ce_elements",
  "gpui_ce_platform",
@@ -273,6 +274,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+ "zbus",
 ]
 
 [[package]]
@@ -7351,6 +7353,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -9106,6 +9109,7 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

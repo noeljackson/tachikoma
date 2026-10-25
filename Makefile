@@ -23,7 +23,7 @@ supplychain-doctor:
 	@"$(SUPPLYCHAIN_SRC)/supplychain" doctor
 
 systemd-validate:
-	systemd-analyze verify contrib/systemd/tachikoma.service contrib/systemd/tachikoma-assessment.service contrib/systemd/tachikoma-slack.service
+	systemd-analyze verify contrib/systemd/tachikoma.service contrib/systemd/tachikoma-assessment.service contrib/systemd/tachikoma-slack.service contrib/systemd/tachikoma-desktop.service
 
 install: build-release systemd-validate
 	install -Dm755 target/release/tachikomad "$(INSTALL_BIN_DIR)/tachikomad"
@@ -100,6 +100,8 @@ install-desktop:
 	cargo build --release --locked -p approval-desktop
 	install -Dm755 target/release/tachikoma-gui "$(INSTALL_BIN_DIR)/tachikoma-gui"
 	install -Dm644 contrib/desktop/dev.noel.tachikoma.desktop "$(INSTALL_PREFIX)/share/applications/dev.noel.tachikoma.desktop"
+	install -Dm644 contrib/systemd/tachikoma-desktop.service "$(SYSTEMD_USER_DIR)/tachikoma-desktop.service"
+	systemctl --user daemon-reload
 
 test-desktop:
 	docker build --target desktop-test --tag tachikoma:desktop-test .

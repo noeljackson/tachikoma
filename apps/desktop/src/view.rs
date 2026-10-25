@@ -15,6 +15,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 actions!(
     desktop,
     [
+        CloseWindow,
         Next,
         Previous,
         FocusLeft,
@@ -34,6 +35,7 @@ actions!(
 );
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
+        KeyBinding::new("ctrl-w", CloseWindow, Some("DecisionUI")),
         KeyBinding::new("up", Previous, Some("ReviewNavigation")),
         KeyBinding::new("down", Next, Some("ReviewNavigation")),
         KeyBinding::new("left", FocusLeft, Some("ReviewNavigation")),
@@ -77,6 +79,14 @@ pub struct Desktop {
     _subscriptions: Vec<Subscription>,
 }
 impl Desktop {
+    pub fn open_review(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.page(Page::Decisions, window, cx);
+        self.state.queue_filter = None;
+        self.state.show_pending = true;
+        self.state.show_history = true;
+        self.filter.update(cx, |filter, cx| filter.emplace("", cx));
+        self.select(id, cx);
+    }
     pub fn new(
         backend: Backend,
         runtime: Arc<tokio::runtime::Runtime>,
@@ -1471,6 +1481,7 @@ impl Render for Desktop {
             .text_color(rgb(colors.text))
             .font_family("Inter")
             .text_size(px(metrics.body))
+            .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .on_action(cx.listener(|this, _: &Refresh, _, cx| this.refresh(cx)))
             .on_action(cx.listener(|this, _: &TogglePending, window, cx| {
                 this.toggle_filter(true, window, cx)
