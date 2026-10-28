@@ -107,7 +107,8 @@ pub fn demo_review() -> Review {
     review
 }
 fn demo_snapshot() -> Snapshot {
-    let review = demo_review();
+    static REVIEW: std::sync::OnceLock<Review> = std::sync::OnceLock::new();
+    let review = REVIEW.get_or_init(demo_review).clone();
     let manifest: QueueManifest = serde_json::from_str(include_str!(
         "../../../contrib/adapters/snitchgate.queue.json"
     ))

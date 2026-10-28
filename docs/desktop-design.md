@@ -11,6 +11,16 @@ selecting queues, supports all/none and closes with Done, Escape or an outside
 click. Explicit selections exclude newly added queues until selected; All queues
 includes them automatically.
 
+Network permissions use two split buttons: Deny once and Allow once. Their
+attached dropdowns list only the offered scopes, ordered from this destination
+to any destination and from once to forever. Selecting a scope opens a centered
+modal rather than expanding the inspector. It keeps the captured request/action
+binding, owns keyboard focus, blocks background shortcuts and restores navigation
+on dismissal. Return confirms and Escape cancels; a held Return used to choose
+from the menu cannot also accept the modal. Primary buttons never remember a
+broader scope. Disconnection, settlement, expiry or changed bindings invalidate
+the modal. The same dialog handles other services' offered actions.
+
 ## Source and tokens
 
 [Radix Colors](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale)
@@ -52,3 +62,10 @@ normal-text contrast of at least 4.5:1 for the main semantic text pairs in both
 modes. Native Docker smoke tests launch light and dark windows, exercise keyboard
 navigation and appearance switching, then check the saved preference and mode.
 They use offline fixtures without live service sockets or model credentials.
+
+The desktop-test stage also runs the explicit `permission_layout` render test.
+It captures the actual views with a software GPU offscreen, checks that the
+scope menu sits below its button and the dialog centers in the window, and
+saves light/dark PNGs under `/out/desktop-layout`. The native keyboard contract
+uses a real approval core on private Docker sockets to check exact action scopes,
+Enter/Escape, held Return, focus isolation, expiry and competing decisions.

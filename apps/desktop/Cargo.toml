@@ -27,3 +27,8 @@ uuid = { version = "1", features = ["v4"] }
 
 [package.metadata.tachikoma]
 boundary = "app"
+
+[dev-dependencies]
+gpui = { package = "gpui-ce", git = "https://github.com/gpui-ce/gpui-ce", rev = "94791b8882f88c126b3089759cb7829a9c1de1a2", default-features = false, features = ["test-support"] }
+gpui_wgpu = { package = "gpui_ce_wgpu", git = "https://github.com/gpui-ce/gpui-ce", rev = "94791b8882f88c126b3089759cb7829a9c1de1a2", features = ["test-support"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

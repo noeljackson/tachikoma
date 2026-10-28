@@ -91,8 +91,8 @@ RUN apt-get update && apt-get install --yes --no-install-recommends python3-dbus
     && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
     mkdir -p /tmp/desktop-runtime && chmod 700 /tmp/desktop-runtime \
-    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh light \
-    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a ./conformance/desktop/smoke.sh dark
+    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a -s "-screen 0 1600x1000x24" ./conformance/desktop/smoke.sh light \
+    && XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan xvfb-run -a -s "-screen 0 1600x1000x24" ./conformance/desktop/smoke.sh dark
 
 FROM desktop-smoke AS notification-tools
 RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
@@ -100,4 +100,11 @@ RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
 ENV TACHIKOMA_TEST_GUI=/out/tachikoma-gui TACHIKOMA_TEST_DAEMON=/out/tachikomad
 FROM notification-tools AS desktop-test
 RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
-    XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a python3 -u conformance/desktop/notifications.py
+    XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a -s "-screen 0 1600x1000x24" python3 -u conformance/desktop/notifications.py
+
+RUN XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a -s "-screen 0 1600x1000x24" python3 -u conformance/desktop/permissions.py
+
+RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=tachikoma-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
+    XDG_RUNTIME_DIR=/tmp/desktop-runtime TACHIKOMA_RENDER_OUTPUT=/out/desktop-layout cargo test --locked -p approval-desktop permission_layout -- --ignored

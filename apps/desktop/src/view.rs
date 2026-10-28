@@ -4,7 +4,7 @@ use approval_protocol::*;
 use gpui::{
     AnchoredPositionMode, App, Context, Entity, FocusHandle, Focusable, KeyBinding, MouseButton,
     SharedString, Subscription, Window, actions, anchored, deferred, div, point, prelude::*, px,
-    rgb,
+    rgb, rgba,
 };
 use gpui_elements::editable_text::{
     EditableTextState, StringStorage, TextChanged, actions::DEFAULT_INPUT_CONTEXT, text_area,
@@ -15,6 +15,11 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 actions!(
     desktop,
     [
+        AllowOnce,
+        DenyOnce,
+        AllowOptions,
+        DenyOptions,
+        ChoosePermission,
         CloseWindow,
         Next,
         Previous,
@@ -34,28 +39,80 @@ actions!(
     ]
 );
 pub fn bind_keys(cx: &mut App) {
+    let navigation =
+        format!("ReviewNavigation && !PermissionMenu && !QueueFilter && !{DEFAULT_INPUT_CONTEXT}");
     cx.bind_keys([
-        KeyBinding::new("ctrl-w", CloseWindow, Some("DecisionUI")),
-        KeyBinding::new("up", Previous, Some("ReviewNavigation")),
-        KeyBinding::new("down", Next, Some("ReviewNavigation")),
-        KeyBinding::new("left", FocusLeft, Some("ReviewNavigation")),
-        KeyBinding::new("right", FocusRight, Some("ReviewNavigation")),
-        KeyBinding::new("ctrl-r", Refresh, Some("DecisionUI")),
-        KeyBinding::new("ctrl-shift-t", CycleAppearance, Some("DecisionUI")),
-        KeyBinding::new("ctrl-1", TogglePending, Some("DecisionUI")),
-        KeyBinding::new("ctrl-2", ToggleHistory, Some("DecisionUI")),
-        KeyBinding::new("ctrl-3", OpenSettings, Some("DecisionUI")),
-        KeyBinding::new("ctrl-f", Search, Some("DecisionUI")),
-        KeyBinding::new("ctrl-k", ToggleQueues, Some("DecisionUI")),
+        KeyBinding::new("a", AllowOnce, Some(&navigation)),
+        KeyBinding::new("d", DenyOnce, Some(&navigation)),
+        KeyBinding::new("shift-a", AllowOptions, Some(&navigation)),
+        KeyBinding::new("shift-d", DenyOptions, Some(&navigation)),
+        KeyBinding::new("up", Previous, Some("PermissionMenu")),
+        KeyBinding::new("down", Next, Some("PermissionMenu")),
+        KeyBinding::new("enter", ChoosePermission, Some("PermissionMenu")),
+        KeyBinding::new("escape", Escape, Some("PermissionMenu")),
+        KeyBinding::new("escape", Escape, Some("PermissionConfirmation")),
+        KeyBinding::new(
+            "ctrl-w",
+            CloseWindow,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new("up", Previous, Some(&navigation)),
+        KeyBinding::new("down", Next, Some(&navigation)),
+        KeyBinding::new("left", FocusLeft, Some(&navigation)),
+        KeyBinding::new("right", FocusRight, Some(&navigation)),
+        KeyBinding::new(
+            "ctrl-r",
+            Refresh,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-shift-t",
+            CycleAppearance,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-1",
+            TogglePending,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-2",
+            ToggleHistory,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-3",
+            OpenSettings,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-f",
+            Search,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
+        KeyBinding::new(
+            "ctrl-k",
+            ToggleQueues,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
         KeyBinding::new("up", Previous, Some("QueueFilter")),
         KeyBinding::new("down", Next, Some("QueueFilter")),
         KeyBinding::new("space", ToggleQueueChoice, Some("QueueFilter")),
         KeyBinding::new("enter", CloseQueues, Some("QueueFilter")),
-        KeyBinding::new("escape", Escape, Some("DecisionUI")),
+        KeyBinding::new(
+            "escape",
+            Escape,
+            Some("DecisionUI && !PermissionConfirmation && !PermissionMenu"),
+        ),
         // Escape leaves an editor through our navigation focus rather than clearing focus.
         KeyBinding::new("escape", Escape, Some(DEFAULT_INPUT_CONTEXT)),
         KeyBinding::new("ctrl-enter", Send, Some("Investigation")),
     ]);
+}
+struct PermissionMenu {
+    review: Review,
+    effect: Effect,
+    cursor: usize,
 }
 pub struct Desktop {
     state: State,
@@ -66,6 +123,11 @@ pub struct Desktop {
     runtime: Arc<tokio::runtime::Runtime>,
     navigation_focus: FocusHandle,
     queue_focus: FocusHandle,
+    permission_focus: FocusHandle,
+    confirmation_focus: FocusHandle,
+    permission_menu: Option<PermissionMenu>,
+    confirmation_requires_release: bool,
+    permission_scroll: gpui::ScrollHandle,
     queues_open: bool,
     queue_cursor: usize,
     detail_scroll: gpui::ScrollHandle,
@@ -130,6 +192,11 @@ impl Desktop {
             runtime,
             navigation_focus,
             queue_focus: cx.focus_handle(),
+            permission_focus: cx.focus_handle(),
+            confirmation_focus: cx.focus_handle(),
+            permission_menu: None,
+            confirmation_requires_release: false,
+            permission_scroll: gpui::ScrollHandle::new(),
             queues_open: false,
             queue_cursor: 0,
             detail_scroll: gpui::ScrollHandle::new(),
@@ -181,6 +248,7 @@ impl Desktop {
         }).detach();
     }
     fn select(&mut self, id: String, cx: &mut Context<Self>) {
+        self.permission_menu = None;
         if self.state.selected.as_ref() != Some(&id) {
             if let Some(previous) = &self.state.selected {
                 self.drafts
@@ -196,6 +264,7 @@ impl Desktop {
     }
     fn page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.queues_open = false;
+        self.permission_menu = None;
         self.state.page = page;
         self.state.confirmation = None;
         window.focus(&self.navigation_focus, cx);
@@ -239,6 +308,16 @@ impl Desktop {
         cx.notify();
     }
     fn navigate(&mut self, offset: isize, cx: &mut Context<Self>) {
+        if let Some(menu) = &mut self.permission_menu {
+            menu.cursor = menu.cursor.saturating_add_signed(offset).min(
+                permission_choices(&menu.review, &menu.effect)
+                    .len()
+                    .saturating_sub(1),
+            );
+            self.permission_scroll.scroll_to_item(menu.cursor);
+            cx.notify();
+            return;
+        }
         if self.queues_open {
             self.queue_cursor = self
                 .queue_cursor
@@ -274,13 +353,422 @@ impl Desktop {
         }
         cx.notify();
     }
-    fn confirm(&mut self, cx: &mut Context<Self>) {
+    fn open_confirmation(
+        &mut self,
+        confirmation: Confirmation,
+        from_menu_key: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.permission_menu = None;
+        self.queues_open = false;
+        if self.state.can_confirm(&confirmation, now_ms()) {
+            self.state.confirmation = Some(confirmation);
+            self.confirmation_requires_release = from_menu_key;
+            window.focus(&self.confirmation_focus, cx);
+        } else {
+            self.state.notice = "Request changed, expired or unavailable. No decision sent.".into();
+            window.focus(&self.navigation_focus, cx);
+        }
+        cx.notify();
+    }
+    fn open_once(&mut self, effect: Effect, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.page != Page::Decisions {
+            return;
+        }
+        if let Some(review) = self.state.review()
+            && review.request.schema_id == "network.connect.v1"
+            && let Some(action) = review
+                .actions
+                .iter()
+                .find(|a| a.effect == effect && a.scope == serde_json::json!({"duration":"once"}))
+        {
+            self.open_confirmation(
+                Confirmation {
+                    review: review.clone(),
+                    action: action.clone(),
+                },
+                false,
+                window,
+                cx,
+            );
+        }
+    }
+    fn open_permission_menu(
+        &mut self,
+        effect: Effect,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state.page != Page::Decisions {
+            return;
+        }
+        if let Some(review) = self.state.review().cloned() {
+            self.show_permission_menu(review, effect, window, cx);
+        }
+    }
+    fn show_permission_menu(
+        &mut self,
+        review: Review,
+        effect: Effect,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .permission_menu
+            .as_ref()
+            .is_some_and(|menu| menu.effect == effect && menu.review.id == review.id)
+        {
+            self.permission_menu = None;
+            window.focus(&self.navigation_focus, cx);
+        } else if review.request.schema_id == "network.connect.v1"
+            && permission_choices(&review, &effect)
+                .first()
+                .is_some_and(|action| {
+                    self.state.can_confirm(
+                        &Confirmation {
+                            review: review.clone(),
+                            action: (*action).clone(),
+                        },
+                        now_ms(),
+                    )
+                })
+        {
+            self.queues_open = false;
+            self.state.confirmation = None;
+            self.permission_menu = Some(PermissionMenu {
+                review,
+                effect,
+                cursor: 0,
+            });
+            self.permission_scroll.scroll_to_item(0);
+            window.focus(&self.permission_focus, cx);
+        }
+        cx.notify();
+    }
+    fn choose_permission(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(menu) = &self.permission_menu else {
+            return;
+        };
+        if let Some(action) = permission_choices(&menu.review, &menu.effect).get(menu.cursor) {
+            self.open_confirmation(
+                Confirmation {
+                    review: menu.review.clone(),
+                    action: (*action).clone(),
+                },
+                true,
+                window,
+                cx,
+            );
+        }
+    }
+    fn permission_button(
+        &self,
+        review: &Review,
+        effect: Effect,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let colors = self.ui.colors;
+        let metrics = self.ui.metrics;
+        let title = if effect == Effect::Permit {
+            "Allow"
+        } else {
+            "Deny"
+        };
+        let color = if effect == Effect::Permit {
+            colors.positive
+        } else {
+            colors.negative
+        };
+        let once = review
+            .actions
+            .iter()
+            .find(|a| a.effect == effect && a.scope == serde_json::json!({"duration":"once"}))
+            .map(|a| Confirmation {
+                review: review.clone(),
+                action: a.clone(),
+            });
+        let open = self
+            .permission_menu
+            .as_ref()
+            .is_some_and(|menu| menu.effect == effect && menu.review.id == review.id);
+        let selected = review.clone();
+        let menu_effect = effect.clone();
+        let mut control = div()
+            .relative()
+            .flex()
+            .debug_selector(|| format!("{title}-permission-control"))
+            .child(
+                self.ui
+                    .split_primary(
+                        SharedString::from(format!("{title}-once")),
+                        &format!("{title} once"),
+                        color,
+                    )
+                    .when(!active || once.is_none(), |element| element.opacity(0.4))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(confirmation) = &once {
+                            this.open_confirmation(confirmation.clone(), false, window, cx);
+                        }
+                    })),
+            )
+            .child(
+                self.ui
+                    .split_toggle(SharedString::from(format!("{title}-options")), color)
+                    .when(!active, |element| element.opacity(0.4))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            this.show_permission_menu(
+                                selected.clone(),
+                                menu_effect.clone(),
+                                window,
+                                cx,
+                            );
+                        }),
+                    ),
+            );
+        if open && let Some(menu) = &self.permission_menu {
+            let mut options = Vec::new();
+            for (index, action) in permission_choices(&menu.review, &effect)
+                .into_iter()
+                .enumerate()
+            {
+                let confirmation = Confirmation {
+                    review: menu.review.clone(),
+                    action: action.clone(),
+                };
+                options.push(
+                    self.ui
+                        .menu_option(
+                            SharedString::from(format!("permission-{}", action.id)),
+                            permission_label(action),
+                            index == menu.cursor,
+                        )
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.open_confirmation(confirmation.clone(), false, window, cx)
+                        }))
+                        .into_any_element(),
+                );
+            }
+            control =
+                control.child(deferred(
+                    anchored()
+                        .position_mode(AnchoredPositionMode::Local)
+                        .position(point(px(0.), px(metrics.control_height + metrics.space[0])))
+                        .snap_to_window()
+                        .child(
+                            div()
+                                .id("permission-menu")
+                                .debug_selector(|| "permission-menu".into())
+                                .key_context("PermissionMenu")
+                                .track_focus(&self.permission_focus)
+                                .w(px(metrics.permission_menu_width))
+                                .p(px(metrics.space[1]))
+                                .rounded(px(metrics.panel_radius))
+                                .bg(rgb(colors.panel))
+                                .border_1()
+                                .border_color(rgb(colors.control_border))
+                                .shadow_lg()
+                                .occlude()
+                                .on_action(cx.listener(|this, _: &ChoosePermission, window, cx| {
+                                    this.choose_permission(window, cx)
+                                }))
+                                .on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                                    this.permission_menu = None;
+                                    window.focus(&this.navigation_focus, cx);
+                                    cx.notify();
+                                }))
+                                .child(
+                                    div()
+                                        .px(px(metrics.space[1]))
+                                        .py(px(metrics.space[1]))
+                                        .child(self.ui.caption(&format!(
+                                            "{} PERMISSION",
+                                            title.to_uppercase()
+                                        ))),
+                                )
+                                .child(
+                                    div()
+                                        .id("permission-choices")
+                                        .track_scroll(&self.permission_scroll)
+                                        .max_h(px(metrics.menu_height))
+                                        .overflow_y_scroll()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(metrics.space[0]))
+                                        .children(options),
+                                ),
+                        ),
+                ));
+        }
+        control
+    }
+    fn confirmation_dialog(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let confirmation = self
+            .state
+            .confirmation
+            .as_ref()
+            .expect("confirmation dialog is conditional");
+        let colors = self.ui.colors;
+        let metrics = self.ui.metrics;
+        let color = if confirmation.action.effect == Effect::Block {
+            colors.negative
+        } else {
+            colors.positive
+        };
+        let title = text(&confirmation.action.label);
+        let cancel =
+            |this: &mut Self, _: &gpui::ClickEvent, window: &mut Window, cx: &mut Context<Self>| {
+                this.state.confirmation = None;
+                window.focus(&this.navigation_focus, cx);
+                cx.notify();
+            };
+        div()
+            .id("permission-backdrop")
+            .absolute()
+            .inset_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(metrics.space[3]))
+            .bg(rgba(colors.scrim))
+            .occlude()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.state.confirmation = None;
+                    window.focus(&this.navigation_focus, cx);
+                    cx.notify();
+                }),
+            )
+            .child(
+                div()
+                    .id("permission-confirmation")
+                    .debug_selector(|| "permission-confirmation".into())
+                    .key_context("PermissionConfirmation")
+                    .track_focus(&self.confirmation_focus)
+                    .w(px(metrics.dialog_width))
+                    .max_w_full()
+                    .max_h_full()
+                    .p(px(metrics.space[4]))
+                    .flex()
+                    .flex_col()
+                    .gap(px(metrics.space[2]))
+                    .rounded(px(metrics.panel_radius))
+                    .bg(rgb(colors.panel))
+                    .border_1()
+                    .border_color(rgb(colors.control_border))
+                    .shadow_lg()
+                    .occlude()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                        if event.keystroke.key == "enter"
+                            && !event.is_held
+                            && !this.confirmation_requires_release
+                        {
+                            this.confirm(window, cx);
+                        }
+                        cx.stop_propagation();
+                    }))
+                    .child(self.ui.caption(if self.backend.demo {
+                        "CONFIRM PERMISSION · OFFLINE PREVIEW"
+                    } else {
+                        "CONFIRM PERMISSION"
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(metrics.title))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .when(
+                        confirmation.action.effect == Effect::Permit
+                            && (confirmation.action.scope["match"] == "executable"
+                                || confirmation.action.scope["duration"] == "forever"),
+                        |element| {
+                            element.child(
+                                div()
+                                    .p(px(metrics.space[2]))
+                                    .rounded(px(metrics.control_radius))
+                                    .bg(rgb(colors.warning_surface))
+                                    .text_color(rgb(colors.warning))
+                                    .child(
+                                        match (
+                                            confirmation.action.scope["match"] == "executable",
+                                            confirmation.action.scope["duration"] == "forever",
+                                        ) {
+                                            (true, true) => {
+                                                "Allows any destination, across restarts."
+                                            }
+                                            (true, false) => {
+                                                "Allows any destination for the selected duration."
+                                            }
+                                            _ => "This permission persists across restarts.",
+                                        },
+                                    ),
+                            )
+                        },
+                    )
+                    .child(
+                        div()
+                            .id("permission-summary")
+                            .min_h_0()
+                            .max_h(px(metrics.dialog_body_height))
+                            .overflow_y_scroll()
+                            .text_size(px(metrics.body))
+                            .whitespace_normal()
+                            .child(text(&confirmation.review.request.summary))
+                            .child(self.ui.section(
+                                "Permission scope",
+                                action_details(&confirmation.review, &confirmation.action),
+                            )),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap(px(metrics.space[2]))
+                            .child(self.ui.caption("Return to confirm · Esc to cancel"))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(metrics.space[1]))
+                                    .child(
+                                        self.ui
+                                            .button("dismiss-action", "Cancel", colors.muted)
+                                            .on_click(cx.listener(cancel)),
+                                    )
+                                    .child(
+                                        self.ui
+                                            .button("confirm-action", "Confirm", color)
+                                            .border_color(rgb(colors.focus))
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.confirm(window, cx)
+                                            })),
+                                    ),
+                            ),
+                    ),
+            )
+    }
+
+    fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.navigation_focus, cx);
         let Some(confirmation) = self.state.confirmation.clone() else {
             return;
         };
         if self.backend.demo || !self.state.can_confirm(&confirmation, now_ms()) {
             self.state.confirmation = None;
-            self.state.notice = "Request changed, expired or unavailable. No decision sent.".into();
+            self.state.notice = if self.backend.demo {
+                "Offline example: no decision sent."
+            } else {
+                "Request changed, expired or unavailable. No decision sent."
+            }
+            .into();
             cx.notify();
             return;
         }
@@ -1116,139 +1604,17 @@ impl Desktop {
             }
             let mut permissions = Vec::new();
             if review.state == ReviewState::Pending {
-                let active = self.state.connected
-                    && !self.state.busy
-                    && review.expires_at_ms > now_ms()
-                    && !self.backend.demo;
+                let active =
+                    self.state.connected && !self.state.busy && review.expires_at_ms > now_ms();
                 permissions.push(self.ui.caption("PERMISSION").into_any_element());
                 if review.request.schema_id == "network.connect.v1" {
-                    let any_available = review
-                        .actions
-                        .iter()
-                        .any(|action| action.scope["match"] == "executable");
-                    let mut targets = vec![];
-                    for (any, title) in [(false, "This IP and port"), (true, "Any destination")] {
-                        targets.push(
-                            self.ui
-                                .segment(title, title, self.state.permission_any_destination == any)
-                                .when(any && !any_available, |element| element.opacity(0.4))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if any && !any_available {
-                                        return;
-                                    }
-                                    this.state.permission_any_destination = any;
-                                    if any && this.state.permission_duration == "once" {
-                                        this.state.permission_duration = "five-minutes".into();
-                                    }
-                                    this.state.confirmation = None;
-                                    cx.notify();
-                                }))
-                                .into_any_element(),
-                        );
-                    }
                     permissions.push(
                         div()
                             .flex()
-                            .flex_col()
-                            .gap(px(metrics.space[1]))
-                            .child(self.ui.caption("Apply to"))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap(px(metrics.space[1]))
-                                    .children(targets),
-                            )
-                            .into_any_element(),
-                    );
-                    let mut durations = vec![];
-                    for (duration, title) in [
-                        ("once", "Once"),
-                        ("five-minutes", "5 minutes"),
-                        ("until-restart", "Until restart"),
-                        ("forever", "Forever"),
-                    ] {
-                        let available = review.actions.iter().any(|action| {
-                            action.scope["duration"] == duration
-                                && (duration == "once"
-                                    || (action.scope["match"] == "executable")
-                                        == self.state.permission_any_destination)
-                        });
-                        durations.push(
-                            self.ui
-                                .segment(title, title, self.state.permission_duration == duration)
-                                .when(!available, |element| element.opacity(0.4))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if available {
-                                        this.state.permission_duration = duration.into();
-                                        if duration == "once" {
-                                            this.state.permission_any_destination = false;
-                                        }
-                                        this.state.confirmation = None;
-                                        cx.notify();
-                                    }
-                                }))
-                                .into_any_element(),
-                        );
-                    }
-                    permissions.push(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(metrics.space[1]))
-                            .child(self.ui.caption("Duration"))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap(px(metrics.space[1]))
-                                    .children(durations),
-                            )
-                            .into_any_element(),
-                    );
-                    let scope = if self.state.permission_any_destination {
-                        serde_json::json!({"duration":self.state.permission_duration,"match":"executable"})
-                    } else {
-                        serde_json::json!({"duration":self.state.permission_duration})
-                    };
-                    let mut decisions = vec![];
-                    for (effect, title, color) in [
-                        (Effect::Block, "Deny", colors.negative),
-                        (Effect::Permit, "Allow", colors.positive),
-                    ] {
-                        let confirmation = review
-                            .actions
-                            .iter()
-                            .find(|action| action.effect == effect && action.scope == scope)
-                            .map(|action| Confirmation {
-                                review: review.clone(),
-                                action: action.clone(),
-                            });
-                        let available = active && confirmation.is_some();
-                        decisions.push(
-                            self.ui
-                                .button(title, title, color)
-                                .px(px(metrics.space[4]))
-                                .when(!available, |element| element.opacity(0.4))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if let Some(confirmation) = &confirmation
-                                        && !this.backend.demo
-                                        && this.state.can_confirm(confirmation, now_ms())
-                                    {
-                                        this.state.confirmation = Some(confirmation.clone());
-                                        this.detail_scroll.scroll_to_bottom();
-                                    }
-                                    cx.notify();
-                                }))
-                                .into_any_element(),
-                        );
-                    }
-                    permissions.push(
-                        div()
-                            .flex()
+                            .items_center()
                             .gap(px(metrics.space[2]))
-                            .pt(px(metrics.space[1]))
-                            .children(decisions)
+                            .child(self.permission_button(&review, Effect::Block, active, cx))
+                            .child(self.permission_button(&review, Effect::Permit, active, cx))
                             .into_any_element(),
                     );
                 } else {
@@ -1269,14 +1635,8 @@ impl Desktop {
                                     },
                                 )
                                 .when(!active, |element| element.opacity(0.4))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if !this.backend.demo
-                                        && this.state.can_confirm(&confirmation, now_ms())
-                                    {
-                                        this.state.confirmation = Some(confirmation.clone());
-                                        this.detail_scroll.scroll_to_bottom();
-                                    }
-                                    cx.notify();
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.open_confirmation(confirmation.clone(), false, window, cx);
                                 }))
                                 .into_any_element(),
                         );
@@ -1284,54 +1644,6 @@ impl Desktop {
                 }
             }
             content.splice(2..2, permissions);
-            if let Some(confirmation) = &self.state.confirmation {
-                content.push(
-                    div()
-                        .p(px(metrics.space[3]))
-                        .rounded(px(metrics.panel_radius))
-                        .bg(rgb(colors.warning_surface))
-                        .border_1()
-                        .border_color(rgb(colors.warning))
-                        .flex()
-                        .flex_col()
-                        .gap(px(metrics.space[2]))
-                        .child(self.ui.caption("Confirm Permission"))
-                        .child(
-                            div()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child(text(&confirmation.action.label)),
-                        )
-                        .child(div().text_size(px(metrics.body)).child(format!(
-                            "{}\nEffect: {:?}\n{}",
-                            text(&confirmation.review.request.summary),
-                            confirmation.action.effect,
-                            action_details(&confirmation.review, &confirmation.action)
-                        )))
-                        .child(
-                            div()
-                                .flex()
-                                .gap(px(metrics.space[2]))
-                                .child(
-                                    self.ui
-                                        .button(
-                                            "confirm-action",
-                                            "Confirm decision",
-                                            colors.warning,
-                                        )
-                                        .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
-                                )
-                                .child(
-                                    self.ui
-                                        .button("dismiss-action", "Cancel", colors.muted)
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.state.confirmation = None;
-                                            cx.notify();
-                                        })),
-                                ),
-                        )
-                        .into_any_element(),
-                );
-            }
         } else {
             content.push(div().p(px(metrics.space[5])).text_color(rgb(colors.muted)).child("Select a decision to inspect its subject, assessment, evidence and available actions.").into_any_element());
         }
@@ -1461,7 +1773,27 @@ impl Desktop {
     }
 }
 impl Render for Desktop {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self
+            .state
+            .confirmation
+            .as_ref()
+            .is_some_and(|c| !self.state.can_confirm(c, now_ms()))
+        {
+            self.state.confirmation = None;
+            self.state.notice = "Request changed, expired or unavailable. No decision sent.".into();
+            window.focus(&self.navigation_focus, cx);
+        }
+        if self.permission_menu.as_ref().is_some_and(|m| {
+            self.state.review().is_none_or(|r| {
+                r.id != m.review.id
+                    || r.revision != m.review.revision
+                    || r.state != ReviewState::Pending
+            }) || !self.state.connected
+        }) {
+            self.permission_menu = None;
+            window.focus(&self.navigation_focus, cx);
+        }
         let colors = self.ui.colors;
         let metrics = self.ui.metrics;
         let connected = self.state.connected;
@@ -1474,6 +1806,7 @@ impl Render for Desktop {
         };
         div()
             .key_context("DecisionUI")
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -1481,6 +1814,11 @@ impl Render for Desktop {
             .text_color(rgb(colors.text))
             .font_family("Inter")
             .text_size(px(metrics.body))
+            .on_key_up(cx.listener(|this, event: &gpui::KeyUpEvent, _, _| {
+                if event.keystroke.key == "enter" {
+                    this.confirmation_requires_release = false;
+                }
+            }))
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .on_action(cx.listener(|this, _: &Refresh, _, cx| this.refresh(cx)))
             .on_action(cx.listener(|this, _: &TogglePending, window, cx| {
@@ -1499,6 +1837,13 @@ impl Render for Desktop {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                if this.state.confirmation.is_some() || this.permission_menu.is_some() {
+                    this.state.confirmation = None;
+                    this.permission_menu = None;
+                    window.focus(&this.navigation_focus, cx);
+                    cx.notify();
+                    return;
+                }
                 if this.queues_open {
                     this.set_queues_open(false, window, cx);
                     return;
@@ -1528,6 +1873,18 @@ impl Render for Desktop {
                     .flex()
                     .flex_1()
                     .min_h_0()
+                    .on_action(cx.listener(|this, _: &AllowOnce, window, cx| {
+                        this.open_once(Effect::Permit, window, cx)
+                    }))
+                    .on_action(cx.listener(|this, _: &DenyOnce, window, cx| {
+                        this.open_once(Effect::Block, window, cx)
+                    }))
+                    .on_action(cx.listener(|this, _: &AllowOptions, window, cx| {
+                        this.open_permission_menu(Effect::Permit, window, cx)
+                    }))
+                    .on_action(cx.listener(|this, _: &DenyOptions, window, cx| {
+                        this.open_permission_menu(Effect::Block, window, cx)
+                    }))
                     .on_action(cx.listener(|this, _: &Next, _, cx| this.navigate(1, cx)))
                     .on_action(cx.listener(|this, _: &Previous, _, cx| this.navigate(-1, cx)))
                     .on_action(cx.listener(|this, _: &FocusLeft, _, cx| {
@@ -1583,6 +1940,9 @@ impl Render for Desktop {
                     )
                     .child(format!("{} · {}", status, text(&self.state.notice))),
             )
+            .when(self.state.confirmation.is_some(), |element| {
+                element.child(self.confirmation_dialog(cx))
+            })
     }
 }
 fn json_text(value: &impl serde::Serialize) -> String {
@@ -1639,7 +1999,7 @@ fn action_details(review: &Review, action: &ReviewAction) -> String {
     if review.request.schema_id == "network.connect.v1" {
         let subject = &review.request.subject;
         let destination = if action.scope["match"] == "executable" {
-            "Any IPv4/IPv6 address, any port, TCP and UDP".into()
+            "Any IPv4/IPv6 address, any port, any protocol".into()
         } else {
             format!(
                 "IP {} · port {} · {}",
@@ -1655,12 +2015,11 @@ fn action_details(review: &Review, action: &ReviewAction) -> String {
             _ => "This request once",
         };
         detail = format!(
-            "Executable path: {}\nUser: {}\nDestinations: {}\nDuration: {}\n\n{}",
+            "Executable path: {}\nUser: {}\nDestinations: {}\nDuration: {}",
             subject["process"].as_str().unwrap_or("Unattributed"),
             subject["uid"],
             destination,
             lifetime,
-            detail
         );
         if action.scope["duration"] == "forever" || action.scope["match"] == "executable" {
             detail.push_str("\n\nThis matches the path, including future programs installed there. It does not verify the file contents or authorize other executable paths.");
@@ -1712,3 +2071,43 @@ fn review_title(review: &Review) -> String {
         text(&review.request.summary)
     }
 }
+
+fn permission_choices<'a>(review: &'a Review, effect: &Effect) -> Vec<&'a ReviewAction> {
+    let mut actions: Vec<_> = review
+        .actions
+        .iter()
+        .filter(|a| &a.effect == effect)
+        .collect();
+    actions.sort_by_key(|a| {
+        (
+            a.scope["match"] == "executable",
+            match a.scope["duration"].as_str() {
+                Some("once") => 0,
+                Some("five-minutes") => 1,
+                Some("until-restart") => 2,
+                Some("forever") => 3,
+                _ => 4,
+            },
+        )
+    });
+    actions
+}
+fn permission_label(action: &ReviewAction) -> String {
+    let target = if action.scope["match"] == "executable" {
+        "Any destination"
+    } else {
+        "This IP/port"
+    };
+    let duration = match action.scope["duration"].as_str() {
+        Some("once") => "Once",
+        Some("five-minutes") => "5 minutes",
+        Some("until-restart") => "Until restart",
+        Some("forever") => "Forever",
+        _ => return text(&action.label),
+    };
+    format!("{target} · {duration}")
+}
+
+#[cfg(test)]
+#[path = "view_visual_tests.rs"]
+mod visual_tests;

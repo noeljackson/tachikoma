@@ -12,20 +12,23 @@ import unittest
 
 import dbus
 import dbus.service
-from dbus.mainloop.glib import DBusGMainLoop
+from dbus.mainloop.glib import DBusGMainLoop, threads_init
 from gi.repository import GLib
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('contract', ROOT/'conformance/adapter/test_contract.py')
 contract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contract)
+threads_init()
 DBusGMainLoop(set_as_default=True)
 loop = GLib.MainLoop()
-threading.Thread(target=loop.run, daemon=True).start()
+loop_thread = threading.Thread(target=loop.run, daemon=True)
+loop_thread.start()
 IFACE = 'org.freedesktop.Notifications'
 PATH = '/org/freedesktop/Notifications'
+retired_connections = []
 
-class Shell(dbus.service.Object):
+class NotificationService(dbus.service.Object):
     def __init__(self):
         self.bus = dbus.SessionBus(private=True)
         self.bus.set_exit_on_disconnect(False)
@@ -56,6 +59,55 @@ class Shell(dbus.service.Object):
         self.remove_from_connection()
         self.bus.release_name(IFACE)
         self.owner = None
+        self._name = None
+        # Keep GLib watch userdata alive until the loop has stopped.
+        retired_connections.append(self.bus)
+
+def on_loop(function):
+    done = threading.Event()
+    result, errors = [], []
+    def invoke():
+        try: result.append(function())
+        except BaseException as error: errors.append(error)
+        finally: done.set()
+        return False
+    GLib.idle_add(invoke)
+    if not done.wait(5): raise RuntimeError('Notification fixture event loop timed out')
+    if errors: raise errors[0]
+    return result[0]
+
+class Shell:
+    def __init__(self): self.service = on_loop(NotificationService)
+    @property
+    def notifications(self):
+        return on_loop(lambda: dict(self.service.notifications))
+    @property
+    def calls(self): return on_loop(lambda: list(self.service.calls))
+    @property
+    def closed(self): return on_loop(lambda: list(self.service.closed))
+    def ActionInvoked(self, identifier, action):
+        on_loop(lambda: self.service.ActionInvoked(identifier, action))
+    def NotificationClosed(self, identifier, reason):
+        on_loop(lambda: self.service.NotificationClosed(identifier, reason))
+    def close(self):
+        if self.service is not None:
+            on_loop(self.service.close)
+            self.service = None
+
+def forged_action(identifier):
+    def emit():
+        rogue = dbus.SessionBus(private=True)
+        rogue.set_exit_on_disconnect(False)
+        signal = dbus.lowlevel.SignalMessage(PATH, IFACE, 'ActionInvoked')
+        signal.append(dbus.UInt32(identifier), 'allow-once', signature='us')
+        rogue.send_message(signal); rogue.flush(); retired_connections.append(rogue)
+    on_loop(emit)
+
+def stop_loop():
+    loop.quit()
+    loop_thread.join(timeout=5)
+    for connection in retired_connections: connection.close()
+    retired_connections.clear()
 
 class NotificationTests(unittest.TestCase):
     def test_native_notifications_and_closed_window_keep_exact_manual_decisions(self):
@@ -93,11 +145,7 @@ class NotificationTests(unittest.TestCase):
         self.assertEqual(shell.notifications[identifier]['actions'], ['default','Review','allow-once','Allow once','deny-once','Deny once'])
         self.assertEqual(shell.notifications[identifier]['body'], '')
         # Another bus client cannot forge the daemon's action signal.
-        rogue = dbus.SessionBus(private=True)
-        rogue.set_exit_on_disconnect(False)
-        signal = dbus.lowlevel.SignalMessage(PATH, IFACE, 'ActionInvoked')
-        signal.append(dbus.UInt32(identifier), 'allow-once', signature='us')
-        rogue.send_message(signal); rogue.flush(); time.sleep(1.2); rogue.close()
+        forged_action(identifier); time.sleep(1.2)
         self.assertEqual(state(first), 'pending')
         shell.ActionInvoked(identifier, 'allow-once')
         contract.until(lambda: state(first)=='allowed')
@@ -143,4 +191,4 @@ class NotificationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     try: unittest.main(testRunner=unittest.TextTestRunner(stream=sys.stdout, verbosity=2))
-    finally: loop.quit()
+    finally: stop_loop()

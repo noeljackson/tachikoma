@@ -52,8 +52,6 @@ pub struct State {
     pub refreshing: bool,
     pub notice: String,
     pub confirmation: Option<Confirmation>,
-    pub permission_duration: String,
-    pub permission_any_destination: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -71,8 +69,6 @@ impl Default for State {
             refreshing: false,
             notice: "Connecting to the local approval service…".into(),
             confirmation: None,
-            permission_duration: "once".into(),
-            permission_any_destination: false,
         }
     }
 }
@@ -184,6 +180,9 @@ impl State {
             && self.review().is_some_and(|review| {
                 review.id == confirmation.review.id
                     && review.revision == confirmation.review.revision
+                    && review.manifest_revision == confirmation.review.manifest_revision
+                    && review.request.nonce == confirmation.review.request.nonce
+                    && review.expires_at_ms == confirmation.review.expires_at_ms
                     && review.subject_digest == confirmation.review.subject_digest
                     && review.evidence_digest == confirmation.review.evidence_digest
                     && review.state == ReviewState::Pending
@@ -198,8 +197,6 @@ impl State {
         if self.selected.as_ref() != Some(&id) {
             self.selected = Some(id);
             self.confirmation = None;
-            self.permission_duration = "once".into();
-            self.permission_any_destination = false;
             self.snapshot.selected = None;
             self.snapshot.preview = None;
             self.snapshot.conversation = None;
@@ -348,6 +345,12 @@ mod tests {
         assert!(!state.can_confirm(&confirmation, 0));
         state.busy = false;
         state.snapshot.pending[0].revision += 1;
+        assert!(!state.can_confirm(&confirmation, 0));
+        state.snapshot.pending[0] = review.clone();
+        state.snapshot.pending[0].manifest_revision += 1;
+        assert!(!state.can_confirm(&confirmation, 0));
+        state.snapshot.pending[0] = review.clone();
+        state.snapshot.pending[0].request.nonce = "different-request".into();
         assert!(!state.can_confirm(&confirmation, 0));
         state.snapshot.pending[0] = review.clone();
         state.snapshot.pending[0].actions[0].scope = serde_json::json!({"duration":"always"});

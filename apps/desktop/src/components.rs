@@ -165,4 +165,37 @@ impl Ui {
                     .child(text(&body)),
             )
     }
+    pub fn split_primary(self, id: impl Into<ElementId>, label: &str, color: u32) -> Stateful<Div> {
+        self.button(id, label.to_owned(), color)
+            .rounded_r(px(0.))
+            .border_r_0()
+    }
+    pub fn split_toggle(self, id: impl Into<ElementId>, color: u32) -> Stateful<Div> {
+        self.control(id, color)
+            .rounded_l(px(0.))
+            .w(px(self.metrics.control_height))
+            .px(px(0.))
+            .child(Icon::Expand.view(color, self.metrics.icon))
+    }
+    pub fn menu_option(
+        self,
+        id: impl Into<ElementId>,
+        label: String,
+        focused: bool,
+    ) -> Stateful<Div> {
+        self.control(id, self.colors.text)
+            .w_full()
+            .justify_start()
+            .bg(rgb(if focused {
+                self.colors.hover
+            } else {
+                self.colors.panel
+            }))
+            .border_color(rgb(if focused {
+                self.colors.focus
+            } else {
+                self.colors.panel
+            }))
+            .child(div().min_w_0().truncate().child(label))
+    }
 }

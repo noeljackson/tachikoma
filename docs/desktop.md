@@ -54,13 +54,20 @@ Expired, changed, disconnected, demo and busy reviews cannot be confirmed. The
 API independently rejects stale revisions and conflicting decisions. Recording
 a decision and confirming producer enforcement are displayed separately.
 
-For network reviews, choose **This IP and port** or **Any destination**, then
-**Once**, **5 minutes**, **Until restart** or **Forever**, and click **Allow** or
-**Deny**. Once applies only to the current request. Reusable permissions always
-bind the captured absolute executable path and UID; an any-destination permission
-covers all IPv4/IPv6 addresses, ports and TCP/UDP for that path and user. The
-confirmation spells out those bindings. Path matching also covers future programs
-installed at that path, including all scripts using a selected interpreter.
+Network reviews use **Allow once** and **Deny once** split buttons. Their dropdowns
+list the exact offered durations for this IP/port and for any destination. The
+main buttons always stay once; choosing a broader permission never changes the
+next default. Selecting an action opens a centered modal with its exact executable,
+user, destination scope and duration. Return confirms; Escape or Cancel dismisses.
+The dialog keeps keyboard focus and blocks background navigation. Holding Return
+while choosing a menu item cannot also accept the dialog. A changed, expired or
+settled request cancels confirmation without submitting another decision.
+
+With list/inspector navigation focused, A/D opens Allow once/Deny once, and
+Shift+A/Shift+D opens the corresponding dropdown. Up/Down chooses a scope;
+Return opens its confirmation. These shortcuts do not apply inside text editors.
+Reusable permissions bind the captured executable path and UID. Permanent
+permissions persist in OpenSnitch; the UI displays their full scope before consent.
 
 Until restart means the OpenSnitch daemon restarting. Forever uses its persisted
 rules and survives daemon/broker/UI restarts. The original request must still be
