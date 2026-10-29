@@ -69,7 +69,25 @@ class ContractTests(unittest.TestCase):
         self.admin = external.API(self.socket, self.root / "approval/admin.token")
     def start_daemon(self):
         self.daemon = self.child([os.environ.get("TACHIKOMA_TEST_DAEMON", str(ROOT / "target/release/tachikomad")), "--database", str(self.root / "legacy.sqlite3"), "--rpc-socket", str(self.socket), "--listen", f"127.0.0.1:{self.port}"] + (["--legacy-web"] if getattr(self,"legacy_web",False) else []))
-        until(lambda: self.socket.exists() and (self.root / "approval/admin.token").exists())
+        def ready():
+            if self.daemon.poll() is not None:
+                raise RuntimeError('fixture daemon exited before readiness')
+            credential = self.root / 'approval/admin.token'
+            if not self.socket.exists() or not credential.exists():
+                return False
+            connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=.5)
+            try:
+                # Files can survive a restart before either listener is accepting.
+                external.API(self.socket, credential).call('GET', '/health')
+                connection.request('GET', '/health')
+                response = connection.getresponse()
+                response.read()
+                return response.status == 200
+            except (OSError, http.client.HTTPException):
+                return False
+            finally:
+                connection.close()
+        until(ready)
     def child(self, command, env=None):
         child = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.children.append(child)

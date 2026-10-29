@@ -531,24 +531,33 @@ impl Desktop {
             );
         if open && let Some(menu) = &self.permission_menu {
             let mut options = Vec::new();
-            for (index, action) in permission_choices(&menu.review, &effect)
+            let available = permission_choices(&menu.review, &effect);
+            for (index, option) in permission_options(&menu.review, &effect)
                 .into_iter()
                 .enumerate()
             {
-                let confirmation = Confirmation {
-                    review: menu.review.clone(),
-                    action: action.clone(),
-                };
-                options.push(
+                let focused = option.action.is_some_and(|action| {
+                    available
+                        .get(menu.cursor)
+                        .is_some_and(|current| *current == action)
+                });
+                let id = SharedString::from(format!("permission-{title}-{index}"));
+                let element = if let Some(action) = option.action {
+                    let confirmation = Confirmation {
+                        review: menu.review.clone(),
+                        action: action.clone(),
+                    };
                     self.ui
-                        .menu_option(
-                            SharedString::from(format!("permission-{}", action.id)),
-                            permission_label(action),
-                            index == menu.cursor,
-                        )
+                        .menu_option(id, option.label, focused)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_confirmation(confirmation.clone(), false, window, cx)
                         }))
+                } else {
+                    self.ui.unavailable_menu_option(id, option.label)
+                };
+                options.push(
+                    element
+                        .debug_selector(move || format!("permission-option-{index}"))
                         .into_any_element(),
                 );
             }
@@ -599,6 +608,21 @@ impl Desktop {
                                         .flex_col()
                                         .gap(px(metrics.space[0]))
                                         .children(options),
+                                )
+                                .when_some(
+                                    permission_unavailable_reason(&menu.review, &effect),
+                                    |element, reason| {
+                                        element.child(
+                                            div()
+                                                .id("permission-unavailable-reason")
+                                                .debug_selector(|| {
+                                                    "permission-unavailable-reason".into()
+                                                })
+                                                .px(px(metrics.space[1]))
+                                                .pt(px(metrics.space[2]))
+                                                .child(self.ui.caption(reason).whitespace_normal()),
+                                        )
+                                    },
                                 ),
                         ),
                 ));
@@ -2073,39 +2097,63 @@ fn review_title(review: &Review) -> String {
 }
 
 fn permission_choices<'a>(review: &'a Review, effect: &Effect) -> Vec<&'a ReviewAction> {
-    let mut actions: Vec<_> = review
-        .actions
-        .iter()
-        .filter(|a| &a.effect == effect)
-        .collect();
-    actions.sort_by_key(|a| {
-        (
-            a.scope["match"] == "executable",
-            match a.scope["duration"].as_str() {
-                Some("once") => 0,
-                Some("five-minutes") => 1,
-                Some("until-restart") => 2,
-                Some("forever") => 3,
-                _ => 4,
-            },
-        )
-    });
-    actions
+    permission_options(review, effect)
+        .into_iter()
+        .filter_map(|option| option.action)
+        .collect()
 }
-fn permission_label(action: &ReviewAction) -> String {
-    let target = if action.scope["match"] == "executable" {
-        "Any destination"
-    } else {
-        "This IP/port"
-    };
-    let duration = match action.scope["duration"].as_str() {
-        Some("once") => "Once",
-        Some("five-minutes") => "5 minutes",
-        Some("until-restart") => "Until restart",
-        Some("forever") => "Forever",
-        _ => return text(&action.label),
-    };
-    format!("{target} · {duration}")
+struct PermissionOption<'a> {
+    label: String,
+    action: Option<&'a ReviewAction>,
+}
+fn permission_options<'a>(review: &'a Review, effect: &Effect) -> Vec<PermissionOption<'a>> {
+    [
+        (false, "once", "Once"),
+        (false, "five-minutes", "5 minutes"),
+        (false, "until-restart", "Until restart"),
+        (false, "forever", "Forever"),
+        (true, "five-minutes", "5 minutes"),
+        (true, "until-restart", "Until restart"),
+        (true, "forever", "Forever"),
+    ]
+    .into_iter()
+    .map(|(executable, duration, label)| {
+        let scope = if executable {
+            serde_json::json!({"duration":duration,"match":"executable"})
+        } else {
+            serde_json::json!({"duration":duration})
+        };
+        PermissionOption {
+            label: format!(
+                "{} · {label}",
+                if executable {
+                    "Any destination"
+                } else {
+                    "This IP/port"
+                }
+            ),
+            action: review
+                .actions
+                .iter()
+                .find(|action| &action.effect == effect && action.scope == scope),
+        }
+    })
+    .collect()
+}
+fn permission_unavailable_reason(review: &Review, effect: &Effect) -> Option<&'static str> {
+    permission_options(review, effect)
+        .iter()
+        .any(|option| option.action.is_none())
+        .then(|| {
+            if !review.request.subject["process"]
+                .as_str()
+                .is_some_and(|path| path.starts_with('/'))
+            {
+                "Longer permissions need an executable path. OpenSnitch did not report one for this request."
+            } else {
+                "Some permissions are unavailable for this request. Its service has not offered these actions."
+            }
+        })
 }
 
 #[cfg(test)]

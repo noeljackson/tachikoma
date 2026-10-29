@@ -16,6 +16,46 @@ impl AssetSource for Assets {
 }
 
 #[test]
+fn missing_permissions_keep_menu_order_without_synthesizing_actions() {
+    let full = crate::backend::demo_review();
+    let labels = |review: &Review, effect: &Effect| {
+        permission_options(review, effect)
+            .into_iter()
+            .map(|option| option.label)
+            .collect::<Vec<_>>()
+    };
+    let mut limited = full.clone();
+    limited.request.subject["process"] = serde_json::json!("");
+    limited
+        .actions
+        .retain(|action| action.scope["duration"] == "once");
+    for effect in [Effect::Permit, Effect::Block] {
+        assert_eq!(labels(&full, &effect), labels(&limited, &effect));
+        let options = permission_options(&limited, &effect);
+        assert_eq!(options.len(), 7);
+        assert!(options[0].action.is_some());
+        assert!(options[1..].iter().all(|option| option.action.is_none()));
+        assert_eq!(permission_choices(&limited, &effect).len(), 1);
+        assert!(
+            permission_unavailable_reason(&limited, &effect)
+                .unwrap()
+                .contains("executable path")
+        );
+        assert!(permission_unavailable_reason(&full, &effect).is_none());
+    }
+    // Familiar action IDs must never turn an unexpected scope into an enabled option.
+    limited.actions[0].scope = serde_json::json!({"duration":"forever","match":"unknown"});
+    assert!(permission_choices(&limited, &Effect::Permit).is_empty());
+    assert_eq!(permission_choices(&limited, &Effect::Block).len(), 1);
+    limited.request.subject["process"] = serde_json::json!("/usr/bin/node");
+    assert!(
+        permission_unavailable_reason(&limited, &Effect::Permit)
+            .unwrap()
+            .contains("service")
+    );
+}
+
+#[test]
 #[ignore = "requires the Docker software GPU and font environment"]
 fn permission_layout() {
     let output = PathBuf::from(
@@ -127,5 +167,69 @@ fn permission_layout() {
         modal
             .save(output.join(format!("{theme}-permission-dialog.png")))
             .unwrap();
+        app.update_window(handle.into(), |view, window, cx| {
+            view.downcast::<Desktop>()
+                .unwrap()
+                .update(cx, |desktop, cx| {
+                    desktop.state.confirmation = None;
+                    let review = desktop.state.snapshot.pending.first_mut().unwrap();
+                    review.request.subject["process"] = serde_json::json!("");
+                    review
+                        .actions
+                        .retain(|action| action.scope["duration"] == "once");
+                    review.request.action_ids = review
+                        .actions
+                        .iter()
+                        .map(|action| action.id.clone())
+                        .collect();
+                    desktop.open_permission_menu(Effect::Permit, window, cx);
+                });
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        assert!(
+            app.debug_bounds(handle.into(), "permission-unavailable-reason")
+                .unwrap()
+                .is_some()
+        );
+        app.capture_screenshot(handle.into())
+            .unwrap()
+            .save(output.join(format!("{theme}-limited-permissions.png")))
+            .unwrap();
+        let disabled = app
+            .debug_bounds(handle.into(), "permission-option-3")
+            .unwrap()
+            .unwrap();
+        app.update_window(handle.into(), |view, window, cx| {
+            window.dispatch_event(
+                gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+                    position: disabled.center(),
+                    button: MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                    first_mouse: false,
+                }),
+                cx,
+            );
+            window.dispatch_event(
+                gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+                    position: disabled.center(),
+                    button: MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                }),
+                cx,
+            );
+            view.downcast::<Desktop>()
+                .unwrap()
+                .update(cx, |desktop, _| {
+                    assert!(
+                        desktop.state.confirmation.is_none(),
+                        "disabled scope must ignore clicks"
+                    );
+                    assert!(desktop.permission_menu.is_some());
+                });
+        })
+        .unwrap();
     }
 }

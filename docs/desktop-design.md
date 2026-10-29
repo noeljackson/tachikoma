@@ -12,9 +12,12 @@ click. Explicit selections exclude newly added queues until selected; All queues
 includes them automatically.
 
 Network permissions use two split buttons: Deny once and Allow once. Their
-attached dropdowns list only the offered scopes, ordered from this destination
-to any destination and from once to forever. Selecting a scope opens a centered
-modal rather than expanding the inspector. It keeps the captured request/action
+attached dropdowns keep the same seven scopes in the same order, from this
+destination to any destination and from once to forever. Unavailable scopes stay
+visible in muted text, do not respond to clicks and are skipped by keyboard
+navigation. The menu explains missing executable attribution or service limits.
+Selecting an available scope opens a centered modal rather than expanding the
+inspector. It keeps the captured request/action
 binding, owns keyboard focus, blocks background shortcuts and restores navigation
 on dismissal. Return confirms and Escape cancels; a held Return used to choose
 from the menu cannot also accept the modal. Primary buttons never remember a

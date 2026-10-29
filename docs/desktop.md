@@ -55,8 +55,10 @@ API independently rejects stale revisions and conflicting decisions. Recording
 a decision and confirming producer enforcement are displayed separately.
 
 Network reviews use **Allow once** and **Deny once** split buttons. Their dropdowns
-list the exact offered durations for this IP/port and for any destination. The
-main buttons always stay once; choosing a broader permission never changes the
+always list the same durations for this IP/port and for any destination. Scopes
+the service cannot offer remain visible but disabled, with an explanation in the
+menu. Keyboard navigation skips them. The main buttons always stay once;
+choosing a broader permission never changes the
 next default. Selecting an action opens a centered modal with its exact executable,
 user, destination scope and duration. Return confirms; Escape or Cancel dismisses.
 The dialog keeps keyboard focus and blocks background navigation. Holding Return
@@ -73,7 +75,8 @@ Until restart means the OpenSnitch daemon restarting. Forever uses its persisted
 rules and survives daemon/broker/UI restarts. The original request must still be
 unexpired when approved. Classifiers and automatic policy cannot issue broad or
 permanent rules; failures and timeouts still deny once. Unattributed requests
-only offer once actions. The transport records a decision separately from
+only support once actions; the other choices remain visible and explain the
+missing executable path. The transport records a decision separately from
 producer-reported enforcement; a returned rule is not a kernel acknowledgement.
 
 Permanent rules are named `snitchgate-allow-<decision UUID>` or

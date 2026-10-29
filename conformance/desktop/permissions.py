@@ -24,11 +24,11 @@ class PermissionTests(unittest.TestCase):
         manifest['assessment'] = None
         f.admin.call('POST', '/queues', manifest)
         producer = contract.external.API(f.socket, f.enroll('permission-producer', 'producer', manifest['id'], 'snitchgate'))
-        def submit(label, seconds=90):
+        def submit(label, seconds=90, attributed=True):
             identifier = uuid.uuid4().hex
             return producer.call('POST','/requests', {'queue':manifest['id'],'producer_request_id':identifier,'nonce':identifier,'idempotency_key':identifier,
-                'schema_id':manifest['schema_id'],'subject':{'process':'/usr/bin/curl','pid':44,'uid':1000,'protocol':'tcp','ip':'192.0.2.1','host':'registry.example.invalid','port':443},
-                'evidence':{}, 'action_ids':[a['id'] for a in manifest['actions']], 'expires_at_ms':int(time.time()*1000)+seconds*1000, 'summary':label})
+                'schema_id':manifest['schema_id'],'subject':{'process':'/usr/bin/curl' if attributed else '', 'pid':44,'uid':1000,'protocol':'tcp','ip':'192.0.2.1','host':'registry.example.invalid','port':443},
+                'evidence':{}, 'action_ids':[a['id'] for a in manifest['actions'] if attributed or a['scope']=={'duration':'once'}], 'expires_at_ms':int(time.time()*1000)+seconds*1000, 'summary':label})
         def get(review): return f.admin.call('GET','/requests/'+review['id'])
         def key(*keys):
             subprocess.run(['xdotool','key','--clearmodifiers','--delay','80',*keys],check=True)
@@ -83,6 +83,12 @@ class PermissionTests(unittest.TestCase):
         activate(denied); key('d','Return')
         settled = contract.until(lambda: (r if (r:=get(denied))['state']=='denied' else None))
         self.assertEqual(settled['decision']['action']['id'], 'deny-once')
+        limited = submit('Missing executable attribution in isolated fixture', attributed=False)
+        activate(limited)
+        # Disabled scopes stay visible but cannot enter the keyboard action sequence.
+        key('shift+a', *(['Down']*6), 'Return', 'Return')
+        settled = contract.until(lambda: (r if (r:=get(limited))['state']=='allowed' else None))
+        self.assertEqual(settled['decision']['action']['id'], 'allow-once')
         external = submit('Settle from another client')
         untouched = submit('Another request must remain pending')
         activate(external); key('a')

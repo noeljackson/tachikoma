@@ -24,6 +24,16 @@ impl Ui {
             .child(value.to_owned())
     }
     fn control(self, id: impl Into<ElementId>, color: u32) -> Stateful<Div> {
+        self.control_base(id, color)
+            .cursor_pointer()
+            .hover_style(move |style| {
+                style
+                    .bg(rgb(self.colors.hover))
+                    .border_color(rgb(self.colors.focus))
+            })
+            .active_style(move |style| style.bg(rgb(self.colors.selected)))
+    }
+    fn control_base(self, id: impl Into<ElementId>, color: u32) -> Stateful<Div> {
         div()
             .id(id)
             .px(px(self.metrics.space[2]))
@@ -34,17 +44,10 @@ impl Ui {
             .line_height(px(self.metrics.line_height))
             .rounded(px(self.metrics.control_radius))
             .text_size(px(self.metrics.body))
-            .cursor_pointer()
             .text_color(rgb(color))
             .bg(rgb(self.colors.control))
             .border_1()
             .border_color(rgb(self.colors.control_border))
-            .hover_style(move |style| {
-                style
-                    .bg(rgb(self.colors.hover))
-                    .border_color(rgb(self.colors.focus))
-            })
-            .active_style(move |style| style.bg(rgb(self.colors.selected)))
     }
     pub fn button(
         self,
@@ -197,5 +200,16 @@ impl Ui {
                 self.colors.panel
             }))
             .child(div().min_w_0().truncate().child(label))
+    }
+    pub fn unavailable_menu_option(self, id: impl Into<ElementId>, label: String) -> Stateful<Div> {
+        self.control_base(id, self.colors.muted)
+            .w_full()
+            .cursor_default()
+            .bg(rgb(self.colors.panel))
+            .border_color(rgb(self.colors.panel))
+            .justify_between()
+            .gap(px(self.metrics.space[1]))
+            .child(div().min_w_0().truncate().child(label))
+            .child(self.caption("Unavailable").flex_shrink_0())
     }
 }
