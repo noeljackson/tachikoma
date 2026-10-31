@@ -96,7 +96,7 @@ impl App {
             },
             Command::Decide {target,action}=>{
                 if !self.action_current(&target,&action) {self.notice="Request changed or expired. No decision sent.".into();return false;}
-                let result=bounded(client.decide(&target.id,&DecideRequest {revision:target.revision,action_id:action.id})).await;
+                let result=bounded(client.decide(&target.id,&DecideRequest {scope:None,revision:target.revision,action_id:action.id})).await;
                 self.notice=match result {
                     Ok(_)=>format!("{} recorded. Waiting for the producer outcome.",display_text(&action.label)),
                     Err(_)=>"Decision not confirmed. Refresh the request before trying again.".into()
@@ -320,6 +320,7 @@ fn details(app: &App) -> String {
     let actions = review
         .actions
         .iter()
+        .filter(|action| !action.selectable())
         .map(|a| format!("{} — {:?}\n{}", a.label, a.effect, a.scope))
         .collect::<Vec<_>>()
         .join("\n\n");

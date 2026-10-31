@@ -234,6 +234,7 @@ async fn act(backend: &Backend, prompt: &Prompt, key: &str) -> Result<()> {
             &DecideRequest {
                 revision: current.revision,
                 action_id: action.id.clone(),
+                scope: None,
             },
         )
         .await?;

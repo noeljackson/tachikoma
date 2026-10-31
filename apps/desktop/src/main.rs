@@ -3,6 +3,7 @@ mod components;
 mod design;
 mod icons;
 mod notifications;
+mod permissions;
 mod state;
 mod view;
 

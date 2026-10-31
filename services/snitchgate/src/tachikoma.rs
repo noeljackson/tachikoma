@@ -121,6 +121,7 @@ fn action_scope(duration: Duration, match_scope: MatchScope) -> serde_json::Valu
     let duration = match duration {
         Duration::Once => "once",
         Duration::FiveMinutes => "five-minutes",
+        Duration::OneHour => "one-hour",
         Duration::UntilRestart => "until-restart",
         Duration::Forever => "forever",
     };
@@ -143,7 +144,23 @@ pub fn actions() -> Vec<ReviewAction> {
             },
             scope: action_scope(*duration, *match_scope),
         })
+        .chain(rule_actions())
         .collect()
+}
+fn rule_actions() -> Vec<ReviewAction> {
+    [
+        ("allow-rule", "Allow with custom scope", Effect::Permit),
+        ("deny-rule", "Deny with custom scope", Effect::Block),
+    ]
+    .into_iter()
+    .map(|(id, label, effect)| ReviewAction {
+        id: id.into(),
+        label: label.into(),
+        effect,
+        scope: serde_json::from_str(include_str!("network-scope.json"))
+            .expect("network scope schema"),
+    })
+    .collect()
 }
 fn subject(c: &Connection) -> serde_json::Value {
     json!({"process":c.process,"pid":c.pid,"uid":c.uid,"protocol":c.protocol,"ip":c.ip.to_string(),"host":c.host,"port":c.port})
@@ -154,6 +171,7 @@ pub fn request(config: &TachikomaConfig, entry: &Entry) -> SubmitRequest {
         .iter()
         .filter(|(_, _, _, duration, _)| *duration == Duration::Once || c.process.starts_with('/'))
         .map(|(id, _, _, _, _)| (*id).to_owned())
+        .chain(rule_actions().into_iter().map(|action| action.id))
         .collect();
     SubmitRequest {
         queue: config.queue.clone(),
@@ -199,6 +217,42 @@ pub fn verdict(
         "captured connection binding changed"
     );
     let decision = approval_client::verified_decision(review, submitted, &config.producer_id, now)?;
+    if matches!(decision.action.id.as_str(), "allow-rule" | "deny-rule") {
+        ensure!(
+            review.mode == Mode::Manual && !decision.actor.starts_with("policy:"),
+            "selected scopes require manual human review"
+        );
+        let action = if decision.action.id == "allow-rule" {
+            Action::Allow
+        } else {
+            Action::Deny
+        };
+        ensure!(
+            decision.action.effect
+                == if action == Action::Allow {
+                    Effect::Permit
+                } else {
+                    Effect::Block
+                },
+            "network effect mismatch"
+        );
+        let permission: crate::permissions::Permission =
+            serde_json::from_value(decision.action.scope.clone())?;
+        permission.operators(connection)?;
+        return Ok(Verdict {
+            action,
+            duration: permission.duration()?,
+            match_scope: MatchScope::Connection,
+            permission: Some(permission),
+            rule_id: Some(uuid::Uuid::parse_str(&decision.id)?.to_string()),
+            source: "tachikoma".into(),
+            reason: format!(
+                "Central approval {} by {}",
+                decision.id,
+                model::display_text(&decision.actor)
+            ),
+        });
+    }
     let (_, _, action, duration, match_scope) = ACTIONS
         .iter()
         .find(|(id, _, _, _, _)| *id == decision.action.id)
@@ -232,6 +286,7 @@ pub fn verdict(
         action,
         duration,
         match_scope,
+        permission: None,
         rule_id: Some(rule_id),
         source: "tachikoma".into(),
         reason: format!(
@@ -288,7 +343,7 @@ mod tests {
         assert!(value.subject.get("url_hints").is_none());
         assert!(value.evidence.get("url_hints").is_some());
         assert_eq!(value.producer_request_id, entry().id);
-        assert_eq!(value.action_ids.len(), ACTIONS.len());
+        assert_eq!(value.action_ids.len(), ACTIONS.len() + 2);
         let manifest: QueueManifest = serde_json::from_str(include_str!(
             "../../../contrib/adapters/snitchgate.queue.json"
         ))
@@ -301,7 +356,7 @@ mod tests {
         entry.connection.process.clear();
         assert_eq!(
             request(&config(), &entry).action_ids,
-            vec!["allow-once", "deny-once"]
+            vec!["allow-once", "deny-once", "allow-rule", "deny-rule"]
         );
     }
     fn approved(action_id: &str) -> (Entry, SubmitRequest, Review) {
@@ -359,7 +414,7 @@ mod tests {
     }
     #[test]
     fn extended_decisions_validate_every_scope_and_bind_exact_executable_and_user() {
-        for action in actions() {
+        for action in actions().into_iter().filter(|action| !action.selectable()) {
             let (entry, request, review) = approved(&action.id);
             let verdict = verdict(&config(), &request, &review, &entry.connection).unwrap();
             let rule = crate::policy::rule(
@@ -426,6 +481,72 @@ mod tests {
         let (entry, request, mut review) = approved("allow-forever");
         review.decision.as_mut().unwrap().expires_at_ms = 0;
         assert!(verdict(&config(), &request, &review, &entry.connection).is_err());
+    }
+    #[test]
+    fn selected_scopes_bind_domain_user_and_executable_without_pinning_domains_to_ips() {
+        for source in ["executable", "all-applications"] {
+            for destination in ["host", "domain", "ip", "any"] {
+                if source == "all-applications" && destination == "any" {
+                    continue;
+                }
+                for protocol in ["this", "any"] {
+                    for port in ["this", "any"] {
+                        for duration in ["five-minutes", "one-hour", "until-restart", "forever"] {
+                            let (entry, request, mut review) = approved("allow-rule");
+                            let selection = json!({"kind":"network-rule", "source":source,
+                                "destination":destination, "protocol":protocol, "port":port, "duration":duration});
+                            review.decision.as_mut().unwrap().action = review
+                                .actions
+                                .iter()
+                                .find(|action| action.id == "allow-rule")
+                                .unwrap()
+                                .resolve_scope(Some(&selection))
+                                .unwrap();
+                            let selected =
+                                verdict(&config(), &request, &review, &entry.connection).unwrap();
+                            let rule = crate::policy::rule("fixture", &entry.connection, &selected);
+                            let operators = &rule.operator.as_ref().unwrap().list;
+                            let has =
+                                |operand: &str| operators.iter().any(|op| op.operand == operand);
+                            assert!(has("user.id"));
+                            assert_eq!(has("process.path"), source == "executable");
+                            assert_eq!(has("dest.ip"), destination == "ip");
+                            assert_eq!(has("dest.host"), matches!(destination, "host" | "domain"));
+                            assert_eq!(has("dest.port"), port == "this");
+                            if destination == "host" {
+                                assert!(
+                                    operators.iter().any(|op| op.operand == "dest.host"
+                                        && op.data == "example.invalid")
+                                );
+                            }
+                            if destination == "domain" {
+                                assert!(
+                                    operators
+                                        .iter()
+                                        .any(|op| op.data == "^([a-z0-9-]+\\.)*example\\.invalid$")
+                                );
+                            }
+                            review.mode = Mode::Policy;
+                            assert!(
+                                verdict(&config(), &request, &review, &entry.connection).is_err()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let (entry, request, mut review) = approved("allow-rule");
+        review.decision.as_mut().unwrap().action.scope = json!({"kind":"network-rule", "source":"all-applications", "destination":"any", "protocol":"any", "port":"any", "duration":"forever"});
+        assert!(verdict(&config(), &request, &review, &entry.connection).is_err());
+        let mut connection = entry.connection.clone();
+        connection.process.clear();
+        let permission: crate::permissions::Permission = serde_json::from_value(json!({"kind":"network-rule", "source":"executable", "destination":"host", "protocol":"this", "port":"this", "duration":"forever"})).unwrap();
+        assert!(permission.operators(&connection).is_err());
+        let mut permission = permission;
+        permission.source = "all-applications".into();
+        assert!(permission.operators(&connection).is_ok());
+        connection.host = "example.invalid|.*".into();
+        assert!(permission.operators(&connection).is_err());
     }
     #[test]
     fn persistent_scope_and_rule_identity_survive_local_audit_storage() {

@@ -11,18 +11,28 @@ selecting queues, supports all/none and closes with Done, Escape or an outside
 click. Explicit selections exclude newly added queues until selected; All queues
 includes them automatically.
 
-Network permissions use two split buttons: Deny once and Allow once. Their
-attached dropdowns keep the same seven scopes in the same order, from this
-destination to any destination and from once to forever. Unavailable scopes stay
-visible in muted text, do not respond to clicks and are skipped by keyboard
-navigation. The menu explains missing executable attribution or service limits.
-Selecting an available scope opens a centered modal rather than expanding the
-inspector. It keeps the captured request/action
-binding, owns keyboard focus, blocks background shortcuts and restores navigation
-on dismissal. Return confirms and Escape cancels; a held Return used to choose
-from the menu cannot also accept the modal. Primary buttons never remember a
-broader scope. Disconnection, settlement, expiry or changed bindings invalidate
-the modal. The same dialog handles other services' offered actions.
+Network permissions use Deny once and Allow once split buttons. Their arrows
+open a centered form with independent Source and Destination selectors, followed
+by Protocol, Port and Duration. Source chooses the captured executable or all
+applications for the captured UID. Destination chooses the reported hostname,
+that hostname and its subdomains, the captured IP, or any destination. Captured
+values stay visible below the selectors; the form never infers a parent domain.
+Protocol and port independently retain the current constraint or broaden it.
+Durations are five minutes, one hour, until OpenSnitch restarts, and forever.
+
+The form shows its complete permission as a sentence. Missing executable or
+hostname attribution disables only the affected choices, with an explanation;
+it never silently switches to all applications. All applications requires a
+specific destination. Primary actions always stay once. Older exact-scope
+requests retain their legacy dropdown until they settle or expire.
+
+Tab/Shift+Tab moves between fields, Space opens choices, arrows navigate,
+Return selects a choice or confirms the form, and Escape closes a choice menu
+before dismissing the form. A held Return cannot both select and approve.
+The modal owns focus, blocks background shortcuts and retains the original
+request/revision/nonce/expiry/evidence bindings. Disconnection, settlement or
+changed bindings invalidates confirmation. Other services retain their exact
+scope confirmation dialog. See [network permissions](network-permissions.md).
 
 ## Source and tokens
 

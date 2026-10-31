@@ -59,6 +59,41 @@ pub struct ReviewAction {
     pub scope: Value,
 }
 
+impl ReviewAction {
+    /// A bounded, administrator-declared schema for an explicit human selection.
+    /// Ordinary exact scopes retain their original wire representation.
+    pub fn selectable(&self) -> bool {
+        self.scope.get("$selection").is_some()
+    }
+    pub fn valid_scope(&self) -> bool {
+        if !self.selectable() {
+            return true;
+        }
+        self.scope
+            .as_object()
+            .is_some_and(|object| object.len() == 1)
+            && serde_json::from_value::<Shape>(self.scope["$selection"].clone())
+                .is_ok_and(|shape| shape.valid())
+    }
+    pub fn resolve_scope(&self, selection: Option<&Value>) -> Option<Self> {
+        let mut action = self.clone();
+        if self.selectable() {
+            let selection = selection?;
+            let shape: Shape = serde_json::from_value(self.scope["$selection"].clone()).ok()?;
+            if !self.valid_scope() || !shape.accepts(selection) {
+                return None;
+            }
+            action.scope = selection.clone();
+        } else if selection.is_some_and(|value| value != &self.scope) {
+            return None;
+        }
+        Some(action)
+    }
+    pub fn permits(&self, selected: &Self) -> bool {
+        self.resolve_scope(Some(&selected.scope)).as_ref() == Some(selected)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Shape {
@@ -396,6 +431,8 @@ pub struct Review {
 pub struct DecideRequest {
     pub revision: i64,
     pub action_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

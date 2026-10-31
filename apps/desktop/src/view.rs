@@ -126,6 +126,8 @@ pub struct Desktop {
     permission_focus: FocusHandle,
     confirmation_focus: FocusHandle,
     permission_menu: Option<PermissionMenu>,
+    rule_field: Option<(crate::permissions::Field, usize)>,
+    rule_focus: usize,
     confirmation_requires_release: bool,
     permission_scroll: gpui::ScrollHandle,
     queues_open: bool,
@@ -195,6 +197,8 @@ impl Desktop {
             permission_focus: cx.focus_handle(),
             confirmation_focus: cx.focus_handle(),
             permission_menu: None,
+            rule_field: None,
+            rule_focus: 0,
             confirmation_requires_release: false,
             permission_scroll: gpui::ScrollHandle::new(),
             queues_open: false,
@@ -361,6 +365,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.permission_menu = None;
+        self.rule_field = None;
+        self.rule_focus = 0;
         self.queues_open = false;
         if self.state.can_confirm(&confirmation, now_ms()) {
             self.state.confirmation = Some(confirmation);
@@ -414,6 +420,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(action) = crate::permissions::draft(&review, &effect) {
+            self.open_confirmation(Confirmation { review, action }, false, window, cx);
+            return;
+        }
         if self
             .permission_menu
             .as_ref()
@@ -674,7 +684,11 @@ impl Desktop {
                     .debug_selector(|| "permission-confirmation".into())
                     .key_context("PermissionConfirmation")
                     .track_focus(&self.confirmation_focus)
-                    .w(px(metrics.dialog_width))
+                    .w(px(if confirmation.action.scope["kind"] == "network-rule" {
+                        metrics.rule_dialog_width
+                    } else {
+                        metrics.dialog_width
+                    }))
                     .max_w_full()
                     .max_h_full()
                     .p(px(metrics.space[4]))
@@ -689,6 +703,10 @@ impl Desktop {
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                        if this.rule_key(event, window, cx) {
+                            cx.stop_propagation();
+                            return;
+                        }
                         if event.keystroke.key == "enter"
                             && !event.is_held
                             && !this.confirmation_requires_release
@@ -706,7 +724,15 @@ impl Desktop {
                         div()
                             .text_size(px(metrics.title))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(title),
+                            .child(if confirmation.action.scope["kind"] == "network-rule" {
+                                if confirmation.action.effect == Effect::Permit {
+                                    "Allow connection".into()
+                                } else {
+                                    "Deny connection".into()
+                                }
+                            } else {
+                                title
+                            }),
                     )
                     .when(
                         confirmation.action.effect == Effect::Permit
@@ -736,6 +762,10 @@ impl Desktop {
                             )
                         },
                     )
+                    .when(
+                        confirmation.action.scope["kind"] == "network-rule",
+                        |element| element.child(self.rule_fields(confirmation, cx)),
+                    )
                     .child(
                         div()
                             .id("permission-summary")
@@ -744,7 +774,10 @@ impl Desktop {
                             .overflow_y_scroll()
                             .text_size(px(metrics.body))
                             .whitespace_normal()
-                            .child(text(&confirmation.review.request.summary))
+                            .when(
+                                confirmation.action.scope["kind"] != "network-rule",
+                                |element| element.child(text(&confirmation.review.request.summary)),
+                            )
                             .child(self.ui.section(
                                 "Permission scope",
                                 action_details(&confirmation.review, &confirmation.action),
@@ -770,6 +803,14 @@ impl Desktop {
                                     .child(
                                         self.ui
                                             .button("confirm-action", "Confirm", color)
+                                            .when(
+                                                crate::permissions::error(
+                                                    &confirmation.review,
+                                                    &confirmation.action,
+                                                )
+                                                .is_some(),
+                                                |element| element.opacity(0.4),
+                                            )
                                             .border_color(rgb(colors.focus))
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.confirm(window, cx)
@@ -785,6 +826,13 @@ impl Desktop {
         let Some(confirmation) = self.state.confirmation.clone() else {
             return;
         };
+        if let Some(reason) = crate::permissions::error(&confirmation.review, &confirmation.action)
+        {
+            window.focus(&self.confirmation_focus, cx);
+            self.state.notice = reason.into();
+            cx.notify();
+            return;
+        }
         if self.backend.demo || !self.state.can_confirm(&confirmation, now_ms()) {
             self.state.confirmation = None;
             self.state.notice = if self.backend.demo {
@@ -1861,6 +1909,10 @@ impl Render for Desktop {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                if this.rule_field.take().is_some() {
+                    cx.notify();
+                    return;
+                }
                 if this.state.confirmation.is_some() || this.permission_menu.is_some() {
                     this.state.confirmation = None;
                     this.permission_menu = None;
@@ -2019,6 +2071,9 @@ fn status(review: &Review) -> String {
 }
 
 fn action_details(review: &Review, action: &ReviewAction) -> String {
+    if action.scope["kind"] == "network-rule" {
+        return crate::permissions::summary(review, action);
+    }
     let mut detail = json_text(&action.scope);
     if review.request.schema_id == "network.connect.v1" {
         let subject = &review.request.subject;
@@ -2159,3 +2214,6 @@ fn permission_unavailable_reason(review: &Review, effect: &Effect) -> Option<&'s
 #[cfg(test)]
 #[path = "view_visual_tests.rs"]
 mod visual_tests;
+
+#[path = "rule_editor.rs"]
+mod rule_editor;

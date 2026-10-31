@@ -20,7 +20,9 @@ Read `docs/desktop-design.md` before changing layout or components.
   facts available in the inspector. Long labels must not push counts or times
   into another pane. Preserve investigation drafts and exact approval bindings.
 - Network actions use split buttons whose primary action always stays once.
-  Broader scopes live in the action dropdown and require a centered modal,
+  Their arrows open a centered Source/Destination form for selected scopes;
+  legacy requests retain their offered scopes. Keep captured values visible and
+  show a complete permission sentence. The form requires explicit selections,
   with focused Return/Escape handling and no background keyboard navigation.
   Opening a modal with a held Return must never also confirm it. Cancel stale
   bindings and keep the next default narrow after cancelling or deciding.

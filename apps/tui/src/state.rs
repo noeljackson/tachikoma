@@ -265,6 +265,7 @@ impl App {
         let actions = review
             .actions
             .iter()
+            .filter(|a| !a.selectable())
             .filter(|a| effect.as_ref().is_none_or(|e| *e == a.effect))
             .cloned()
             .collect::<Vec<_>>();

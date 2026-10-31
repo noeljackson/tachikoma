@@ -28,11 +28,13 @@ class PermissionTests(unittest.TestCase):
             identifier = uuid.uuid4().hex
             return producer.call('POST','/requests', {'queue':manifest['id'],'producer_request_id':identifier,'nonce':identifier,'idempotency_key':identifier,
                 'schema_id':manifest['schema_id'],'subject':{'process':'/usr/bin/curl' if attributed else '', 'pid':44,'uid':1000,'protocol':'tcp','ip':'192.0.2.1','host':'registry.example.invalid','port':443},
-                'evidence':{}, 'action_ids':[a['id'] for a in manifest['actions'] if attributed or a['scope']=={'duration':'once'}], 'expires_at_ms':int(time.time()*1000)+seconds*1000, 'summary':label})
+                'evidence':{}, 'action_ids':[a['id'] for a in manifest['actions'] if attributed or a['scope']=={'duration':'once'} or '$selection' in a['scope']], 'expires_at_ms':int(time.time()*1000)+seconds*1000, 'summary':label})
         def get(review): return f.admin.call('GET','/requests/'+review['id'])
         def key(*keys):
             subprocess.run(['xdotool','key','--clearmodifiers','--delay','80',*keys],check=True)
             time.sleep(.2)
+            if desktop.poll() is not None:
+                self.fail('desktop exited during keyboard input: '+desktop.stderr.read().decode())
         initial = submit('Review exact network permission')
         command = [os.environ.get('TACHIKOMA_TEST_GUI', str(ROOT/'target/debug/tachikoma-gui')),
             '--socket', str(f.socket), '--credential', str(f.root/'approval/desktop.token')]
@@ -51,8 +53,8 @@ class PermissionTests(unittest.TestCase):
         key('Escape')
         key('a'); key('Escape')
         self.assertEqual(get(initial)['state'], 'pending')
-        key('shift+a', *(['Down']*6))
-        # Enter chooses the widest scope, but a held/repeated Enter cannot also approve it.
+        key('shift+a', 'space')
+        # Choosing a source with held Enter must not also approve the form.
         subprocess.run(['xdotool','keydown','Return'],check=True)
         time.sleep(1.0)
         self.assertEqual(get(initial)['state'], 'pending')
@@ -62,7 +64,7 @@ class PermissionTests(unittest.TestCase):
         key('ctrl+1','ctrl+f','Down','Tab','Escape')
         self.assertEqual(get(initial)['state'], 'pending')
         key('ctrl+shift+t')
-        key('shift+a', *(['Down']*6)); key('Return')
+        key('shift+a', 'Tab', 'space', 'Down', 'Down', 'Down', 'Return')
         key('Escape')
         # A normal once click/shortcut remains once after cancelling the widest option.
         key('a','Return')
@@ -75,20 +77,32 @@ class PermissionTests(unittest.TestCase):
             time.sleep(2.2)
         broad = submit('Explicit broad approval in isolated fixture')
         activate(broad)
-        key('shift+a', *(['Down']*6), 'Return', 'Return')
+        key('shift+a', 'Tab', 'space', 'Down', 'Down', 'Down', 'Return')
+        key('Tab', 'space', 'Down', 'Return', 'Tab', 'space', 'Down', 'Return')
+        key('Tab', 'space', 'Down', 'Down', 'Down', 'Return'); key('Return')
         settled = contract.until(lambda: (r if (r:=get(broad))['state']=='allowed' else None))
-        self.assertEqual(settled['decision']['action']['id'], 'allow-executable-forever')
-        self.assertEqual(settled['decision']['action']['scope'], {'duration':'forever','match':'executable'})
+        self.assertEqual(settled['decision']['action']['id'], 'allow-rule')
+        self.assertEqual(settled['decision']['action']['scope'], {'kind':'network-rule','source':'executable','destination':'any','protocol':'any','port':'any','duration':'forever'})
         denied = submit('Deny once in isolated fixture')
         activate(denied); key('d','Return')
         settled = contract.until(lambda: (r if (r:=get(denied))['state']=='denied' else None))
         self.assertEqual(settled['decision']['action']['id'], 'deny-once')
         limited = submit('Missing executable attribution in isolated fixture', attributed=False)
         activate(limited)
-        # Disabled scopes stay visible but cannot enter the keyboard action sequence.
-        key('shift+a', *(['Down']*6), 'Return', 'Return')
+        # Missing attribution cannot silently broaden a permission.
+        key('shift+a', 'Return')
+        self.assertEqual(get(limited)['state'], 'pending')
+        key('space', 'Down', 'Return'); key('Return')
         settled = contract.until(lambda: (r if (r:=get(limited))['state']=='allowed' else None))
-        self.assertEqual(settled['decision']['action']['id'], 'allow-once')
+        self.assertEqual(settled['decision']['action']['id'], 'allow-rule')
+        self.assertEqual(settled['decision']['action']['scope']['source'], 'all-applications')
+        self.assertEqual(settled['decision']['action']['scope']['destination'], 'host')
+        domain = submit('Domain and subdomains for all applications')
+        activate(domain)
+        key('shift+a', 'space', 'Down', 'Return', 'Tab', 'space', 'Down', 'Return')
+        key('Tab', 'Tab', 'Tab', 'space', 'Down', 'Return'); key('Return')
+        settled = contract.until(lambda: (r if (r:=get(domain))['state']=='allowed' else None))
+        self.assertEqual(settled['decision']['action']['scope'], {'kind':'network-rule','source':'all-applications','destination':'domain','protocol':'this','port':'this','duration':'one-hour'})
         external = submit('Settle from another client')
         untouched = submit('Another request must remain pending')
         activate(external); key('a')
@@ -101,7 +115,7 @@ class PermissionTests(unittest.TestCase):
         self.assertEqual(get(expired)['state'], 'expired')
         self.assertEqual(get(untouched)['state'], 'pending')
         self.assertIsNone(desktop.poll())
-        print('Split dropdown, Enter/Escape, focus trap, held Enter, exact scopes, safe defaults, external settlement and expiry verified')
+        print('Source/destination form, all-application domains, executable-anywhere scope, missing attribution, Enter/Escape, held Enter, exact bindings and expiry verified')
 
 if __name__ == '__main__':
     try: unittest.main(testRunner=unittest.TextTestRunner(stream=sys.stdout, verbosity=2))

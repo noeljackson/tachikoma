@@ -70,6 +70,9 @@ pub enum Command {
     Decide {
         id: String,
         action: String,
+        /// Explicit selected scope for an action with a selection schema.
+        #[arg(long)]
+        scope_file: Option<PathBuf>,
         #[arg(long, default_value_t = 1)]
         revision: i64,
     },
@@ -168,12 +171,14 @@ pub async fn run(
             id,
             action,
             revision,
+            scope_file,
         } => print(
             &client
                 .decide(
                     &id,
                     &DecideRequest {
                         revision,
+                        scope: scope_file.as_ref().map(|path| read(path)).transpose()?,
                         action_id: action,
                     },
                 )
@@ -342,6 +347,7 @@ async fn import_legacy(client: &Client, path: &Path) -> Result<()> {
                 .decide(
                     &review.id,
                     &DecideRequest {
+                        scope: None,
                         revision: review.revision,
                         action_id: "archive".into(),
                     },

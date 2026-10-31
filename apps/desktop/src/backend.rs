@@ -65,6 +65,7 @@ impl Backend {
                 &DecideRequest {
                     revision: review.revision,
                     action_id: action.id.clone(),
+                    scope: Some(action.scope.clone()),
                 },
             )
             .await?;

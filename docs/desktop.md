@@ -54,29 +54,27 @@ Expired, changed, disconnected, demo and busy reviews cannot be confirmed. The
 API independently rejects stale revisions and conflicting decisions. Recording
 a decision and confirming producer enforcement are displayed separately.
 
-Network reviews use **Allow once** and **Deny once** split buttons. Their dropdowns
-always list the same durations for this IP/port and for any destination. Scopes
-the service cannot offer remain visible but disabled, with an explanation in the
-menu. Keyboard navigation skips them. The main buttons always stay once;
-choosing a broader permission never changes the
-next default. Selecting an action opens a centered modal with its exact executable,
-user, destination scope and duration. Return confirms; Escape or Cancel dismisses.
-The dialog keeps keyboard focus and blocks background navigation. Holding Return
-while choosing a menu item cannot also accept the dialog. A changed, expired or
-settled request cancels confirmation without submitting another decision.
+Network reviews use **Allow once** and **Deny once** split buttons. The arrows
+open a [Source/Destination form](network-permissions.md). Choose the executable
+or all applications for the captured UID, then a hostname, hostname and
+subdomains, IP address or any destination. Port, protocol and lifetime are
+independent. The full scope is displayed as a sentence before confirmation.
+Missing attribution has an explicit explanation beside the affected choices.
+The form never silently changes the application or destination scope.
 
-With list/inspector navigation focused, A/D opens Allow once/Deny once, and
-Shift+A/Shift+D opens the corresponding dropdown. Up/Down chooses a scope;
-Return opens its confirmation. These shortcuts do not apply inside text editors.
-Reusable permissions bind the captured executable path and UID. Permanent
-permissions persist in OpenSnitch; the UI displays their full scope before consent.
+A/D opens the once confirmation; Shift+A/Shift+D opens the permission form.
+Tab/Shift+Tab moves between fields; Space opens choices; arrows navigate;
+Return selects a choice or confirms; Escape closes the menu or cancels.
+A held Return cannot both select a field value and approve. The modal blocks
+background shortcuts and invalidates stale/expired request bindings. Older
+requests that lack the new actions retain their exact-scope dropdown.
 
 Until restart means the OpenSnitch daemon restarting. Forever uses its persisted
 rules and survives daemon/broker/UI restarts. The original request must still be
 unexpired when approved. Classifiers and automatic policy cannot issue broad or
 permanent rules; failures and timeouts still deny once. Unattributed requests
-only support once actions; the other choices remain visible and explain the
-missing executable path. The transport records a decision separately from
+cannot create executable-specific rules; an explicitly selected all-application
+rule can still target a specific known destination. The transport records a decision separately from
 producer-reported enforcement; a returned rule is not a kernel acknowledgement.
 
 Permanent rules are named `snitchgate-allow-<decision UUID>` or

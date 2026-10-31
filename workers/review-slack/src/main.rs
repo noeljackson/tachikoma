@@ -156,7 +156,7 @@ fn clipped(value: &str, limit: usize) -> String {
     display_text(value).chars().take(limit).collect()
 }
 fn visible_action(action: &ReviewAction) -> bool {
-    action.scope.to_string().len() <= 1800
+    !action.selectable() && action.scope.to_string().len() <= 1800
 }
 fn threaded_action(review: &Review, permit: bool) -> Option<&ReviewAction> {
     let effect = if permit {

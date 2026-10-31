@@ -35,6 +35,7 @@ pub fn automatic(
         action: first.action,
         duration: Duration::Once,
         match_scope: MatchScope::Connection,
+        permission: None,
         rule_id: None,
         source: "automation".into(),
         reason: "Exact owner-configured scope and Jev category/confidence matched".into(),
@@ -52,6 +53,30 @@ fn exact(operand: &str, data: String) -> Operator {
 }
 
 pub fn rule(id: &str, connection: &Connection, verdict: &Verdict) -> Rule {
+    if let Some(permission) = &verdict.permission {
+        let operators = permission.operators(connection);
+        if !matches!(verdict.source.as_str(), "human" | "tachikoma")
+            || operators.is_err()
+            || permission.duration().ok() != Some(verdict.duration)
+        {
+            return rule(
+                id,
+                connection,
+                &fallback("Invalid human-selected network permission"),
+            );
+        }
+        let mut output = rule(id, connection, &fallback("selected scope"));
+        output.name = format!("snitchgate-{}-{id}", verdict.action.as_str());
+        output.action = verdict.action.as_str().into();
+        output.duration = verdict.duration.as_str().into();
+        output.description = format!(
+            "Explicit {:?} network permission for UID {}; {}",
+            permission, connection.uid, verdict.reason
+        );
+        output.operator.as_mut().expect("rule constraints").list =
+            operators.expect("validated operators");
+        return output;
+    }
     let extended = verdict.match_scope == MatchScope::Executable
         || matches!(verdict.duration, Duration::UntilRestart | Duration::Forever);
     if extended
@@ -132,6 +157,7 @@ pub fn fallback(reason: &str) -> Verdict {
         action: Action::Deny,
         duration: Duration::Once,
         match_scope: MatchScope::Connection,
+        permission: None,
         rule_id: None,
         source: "fallback".into(),
         reason: reason.into(),
@@ -203,6 +229,7 @@ mod tests {
                 action: Action::Allow,
                 duration: Duration::Forever,
                 match_scope: MatchScope::Executable,
+                permission: None,
                 rule_id: None,
                 source: source.into(),
                 reason: "allow everything".into(),

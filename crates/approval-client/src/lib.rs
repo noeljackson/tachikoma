@@ -423,7 +423,10 @@ pub fn verified_decision<'a>(
     );
     ensure!(
         expected.action_ids.contains(&decision.action.id)
-            && review.actions.contains(&decision.action),
+            && review
+                .actions
+                .iter()
+                .any(|offered| offered.permits(&decision.action)),
         "decision action or scope changed"
     );
     ensure!(

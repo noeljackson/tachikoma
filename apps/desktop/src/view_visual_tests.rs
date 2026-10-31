@@ -85,7 +85,13 @@ fn permission_layout() {
             socket: PathBuf::new(),
             credential: PathBuf::new(),
         };
-        let snapshot = runtime.block_on(backend.snapshot(None)).unwrap();
+        let mut snapshot = runtime.block_on(backend.snapshot(None)).unwrap();
+        // Long build/cache paths keep the selectors and action buttons in the dialog.
+        snapshot.pending[0].request.subject["process"] = serde_json::json!(format!(
+            "/home/noel/.cache/{}/target/debug/example",
+            "project-build/".repeat(18)
+        ));
+        snapshot.selected = Some(snapshot.pending[0].clone());
         let handle = app
             .open_window(gpui::size(px(1320.), px(860.)), |window, cx| {
                 cx.new(|cx| {
@@ -115,89 +121,76 @@ fn permission_layout() {
         } else {
             "dark"
         };
-        let control = app
-            .debug_bounds(handle.into(), "Allow-permission-control")
+        let source = app
+            .debug_bounds(handle.into(), "rule-source")
             .unwrap()
             .unwrap();
-        let menu_bounds = app
-            .debug_bounds(handle.into(), "permission-menu")
+        let destination = app
+            .debug_bounds(handle.into(), "rule-destination")
             .unwrap()
             .unwrap();
-        assert!(
-            menu_bounds.top() >= control.bottom(),
-            "dropdown must open below its split button"
-        );
-        let menu = app.capture_screenshot(handle.into()).unwrap();
-        assert!(
-            menu.pixels().map(|p| p.0).collect::<HashSet<_>>().len() > 64,
-            "menu must contain actual rendered text and controls"
-        );
-        menu.save(output.join(format!("{theme}-allow-menu.png")))
+        assert_eq!(source.top(), destination.top());
+        assert!(source.right() < destination.left());
+        let protocol = app
+            .debug_bounds(handle.into(), "rule-protocol")
+            .unwrap()
             .unwrap();
-        app.update_window(handle.into(), |view, window, cx| {
-            view.downcast::<Desktop>()
-                .unwrap()
-                .update(cx, |desktop, cx| {
-                    let review = desktop.state.review().unwrap().clone();
-                    let action = review
-                        .actions
-                        .iter()
-                        .find(|a| a.id == "allow-executable-forever")
-                        .unwrap()
-                        .clone();
-                    desktop.open_confirmation(Confirmation { review, action }, false, window, cx);
-                });
-            window.draw(cx).clear(cx);
-        })
-        .unwrap();
-        let bounds = app
+        let port = app
+            .debug_bounds(handle.into(), "rule-port")
+            .unwrap()
+            .unwrap();
+        let duration = app
+            .debug_bounds(handle.into(), "rule-duration")
+            .unwrap()
+            .unwrap();
+        assert_eq!(protocol.top(), port.top());
+        assert_eq!(port.top(), duration.top());
+        let modal = app
             .debug_bounds(handle.into(), "permission-confirmation")
             .unwrap()
             .unwrap();
+        assert!((f32::from(modal.center().x) - 660.).abs() < 1.);
+        assert!((f32::from(modal.center().y) - 430.).abs() < 1.);
+        let screenshot = app.capture_screenshot(handle.into()).unwrap();
         assert!(
-            (f32::from(bounds.center().x) - 660.).abs() < 1.,
-            "dialog must center horizontally"
+            screenshot
+                .pixels()
+                .map(|p| p.0)
+                .collect::<HashSet<_>>()
+                .len()
+                > 64
         );
-        assert!(
-            (f32::from(bounds.center().y) - 430.).abs() < 1.,
-            "dialog must center vertically"
-        );
-        let modal = app.capture_screenshot(handle.into()).unwrap();
-        assert_ne!(menu, modal, "modal must replace the open menu");
-        modal
-            .save(output.join(format!("{theme}-permission-dialog.png")))
+        screenshot
+            .save(output.join(format!("{theme}-source-destination.png")))
             .unwrap();
         app.update_window(handle.into(), |view, window, cx| {
             view.downcast::<Desktop>()
                 .unwrap()
-                .update(cx, |desktop, cx| {
-                    desktop.state.confirmation = None;
-                    let review = desktop.state.snapshot.pending.first_mut().unwrap();
-                    review.request.subject["process"] = serde_json::json!("");
-                    review
-                        .actions
-                        .retain(|action| action.scope["duration"] == "once");
-                    review.request.action_ids = review
-                        .actions
-                        .iter()
-                        .map(|action| action.id.clone())
-                        .collect();
-                    desktop.open_permission_menu(Effect::Permit, window, cx);
+                .update(cx, |desktop, _| {
+                    let confirmation = desktop.state.confirmation.as_mut().unwrap();
+                    confirmation.action.scope["source"] = serde_json::json!("all-applications");
+                    confirmation.action.scope["destination"] = serde_json::json!("domain");
+                    confirmation.action.scope["duration"] = serde_json::json!("forever");
+                    desktop.rule_field = Some((crate::permissions::Field::Destination, 1));
                 });
             window.draw(cx).clear(cx);
         })
         .unwrap();
-        assert!(
-            app.debug_bounds(handle.into(), "permission-unavailable-reason")
-                .unwrap()
-                .is_some()
-        );
+        let menu = app
+            .debug_bounds(handle.into(), "rule-field-menu")
+            .unwrap()
+            .unwrap();
+        let destination = app
+            .debug_bounds(handle.into(), "rule-destination")
+            .unwrap()
+            .unwrap();
+        assert!(menu.top() >= destination.bottom());
         app.capture_screenshot(handle.into())
             .unwrap()
-            .save(output.join(format!("{theme}-limited-permissions.png")))
+            .save(output.join(format!("{theme}-domain-menu.png")))
             .unwrap();
         let disabled = app
-            .debug_bounds(handle.into(), "permission-option-3")
+            .debug_bounds(handle.into(), "rule-choice-3")
             .unwrap()
             .unwrap();
         app.update_window(handle.into(), |view, window, cx| {
@@ -223,13 +216,31 @@ fn permission_layout() {
             view.downcast::<Desktop>()
                 .unwrap()
                 .update(cx, |desktop, _| {
-                    assert!(
-                        desktop.state.confirmation.is_none(),
-                        "disabled scope must ignore clicks"
+                    assert_eq!(
+                        desktop.state.confirmation.as_ref().unwrap().action.scope["destination"],
+                        "domain"
                     );
-                    assert!(desktop.permission_menu.is_some());
                 });
         })
         .unwrap();
+        app.update_window(handle.into(), |view, window, cx| {
+            view.downcast::<Desktop>()
+                .unwrap()
+                .update(cx, |desktop, cx| {
+                    desktop.state.confirmation = None;
+                    desktop.rule_field = None;
+                    let review = desktop.state.snapshot.pending.first_mut().unwrap();
+                    review.request.subject["process"] = serde_json::json!("");
+                    let request = review.clone();
+                    desktop.state.snapshot.selected = Some(request);
+                    desktop.open_permission_menu(Effect::Permit, window, cx);
+                });
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        app.capture_screenshot(handle.into())
+            .unwrap()
+            .save(output.join(format!("{theme}-missing-attribution.png")))
+            .unwrap();
     }
 }

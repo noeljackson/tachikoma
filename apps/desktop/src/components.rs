@@ -201,6 +201,22 @@ impl Ui {
             }))
             .child(div().min_w_0().truncate().child(label))
     }
+    pub fn field_select(
+        self,
+        id: impl Into<ElementId>,
+        label: String,
+        focused: bool,
+    ) -> Stateful<Div> {
+        self.control(id, self.colors.text)
+            .w_full()
+            .justify_between()
+            .gap(px(self.metrics.space[1]))
+            .when(focused, |element| {
+                element.border_color(rgb(self.colors.focus))
+            })
+            .child(div().flex_1().min_w_0().truncate().child(label))
+            .child(Icon::Expand.view(self.colors.muted, self.metrics.icon))
+    }
     pub fn unavailable_menu_option(self, id: impl Into<ElementId>, label: String) -> Stateful<Div> {
         self.control_base(id, self.colors.muted)
             .w_full()

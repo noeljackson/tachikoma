@@ -6,6 +6,7 @@ pub mod credentials;
 pub mod ipc;
 pub mod model;
 pub mod observe;
+pub mod permissions;
 pub mod policy;
 pub mod providers;
 pub mod server;

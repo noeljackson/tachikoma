@@ -1,0 +1,66 @@
+{
+  "$selection": {
+    "type": "object",
+    "fields": {
+      "kind": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "network-rule"
+        ]
+      },
+      "source": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "executable",
+          "all-applications"
+        ]
+      },
+      "destination": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "host",
+          "domain",
+          "ip",
+          "any"
+        ]
+      },
+      "protocol": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "this",
+          "any"
+        ]
+      },
+      "port": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "this",
+          "any"
+        ]
+      },
+      "duration": {
+        "type": "string",
+        "max_len": 32,
+        "choices": [
+          "five-minutes",
+          "one-hour",
+          "until-restart",
+          "forever"
+        ]
+      }
+    },
+    "required": [
+      "kind",
+      "source",
+      "destination",
+      "protocol",
+      "port",
+      "duration"
+    ]
+  }
+}

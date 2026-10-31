@@ -304,7 +304,7 @@ fn render_review(review: &Review, csrf: &str) -> String {
         escape(&serde_json::to_string_pretty(&review.request.evidence).unwrap_or_default())
     ));
     if review.state == ReviewState::Pending && review.expires_at_ms > now {
-        for action in &review.actions {
+        for action in review.actions.iter().filter(|action| !action.selectable()) {
             out.push_str(&format!("<p><strong>{}</strong> — {:?}</p><pre>{}</pre><form method=post action='/approval/requests/{}/decide'><input type=hidden name=csrf value='{}'><input type=hidden name=revision value='{}'><button name=action_id value='{}'>{}</button></form>",escape(&action.label),action.effect,escape(&action.scope.to_string()),escape(&review.id),csrf,review.revision,escape(&action.id),escape(&action.label)));
         }
     }
@@ -472,7 +472,7 @@ async fn decide(
     if input.csrf != session.csrf {
         return session_error();
     }
-    match session.client.decide(&id,&DecideRequest{revision:input.revision,action_id:input.action_id}).await{Ok(_)=>Redirect::to("/approval/").into_response(),Err(_)=>(StatusCode::CONFLICT,page("Decision rejected","<p>The request may have expired, changed, or settled elsewhere. <a href='/approval/'>Return to the current inbox</a>.</p>",None)).into_response()}
+    match session.client.decide(&id,&DecideRequest{scope:None,revision:input.revision,action_id:input.action_id}).await{Ok(_)=>Redirect::to("/approval/").into_response(),Err(_)=>(StatusCode::CONFLICT,page("Decision rejected","<p>The request may have expired, changed, or settled elsewhere. <a href='/approval/'>Return to the current inbox</a>.</p>",None)).into_response()}
 }
 #[derive(Deserialize)]
 struct CsrfForm {

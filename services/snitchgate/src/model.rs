@@ -170,6 +170,7 @@ impl Action {
 pub enum Duration {
     Once,
     FiveMinutes,
+    OneHour,
     UntilRestart,
     Forever,
 }
@@ -178,6 +179,7 @@ impl Duration {
         match self {
             Self::Once => "once",
             Self::FiveMinutes => "5m",
+            Self::OneHour => "1h",
             Self::UntilRestart => "until restart",
             Self::Forever => "always",
         }
@@ -198,6 +200,8 @@ pub struct Verdict {
     pub duration: Duration,
     #[serde(default)]
     pub match_scope: MatchScope,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<crate::permissions::Permission>,
     #[serde(default)]
     pub rule_id: Option<String>,
     pub source: String,

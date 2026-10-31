@@ -244,7 +244,10 @@ pub(super) fn card(delivery: &Delivery) -> Value {
     } else if active {
         blocks.push(context(format!("Expires <!date^{}^{{time_secs}} ({{date_short}})|at the request deadline> · Classification is advisory. Thread yes/no applies once.",review.expires_at_ms/1000)));
         blocks.push(json!({"type":"divider"}));
-        for action in &review.actions {
+        if review.actions.iter().any(ReviewAction::selectable) {
+            blocks.push(context("Configure source, destination, ports and duration in the desktop app. Slack buttons and thread replies retain their displayed scopes.".into()));
+        }
+        for action in review.actions.iter().filter(|action| !action.selectable()) {
             blocks.push(section(&if visible_in_review(review, action, network) {
                 format!("{} · {}", action.label, scope(action, network))
             } else {

@@ -494,6 +494,7 @@ impl Store {
                 || action.label.is_empty()
                 || action.label.len() > 100
                 || !action.scope.is_object()
+                || !action.valid_scope()
                 || json(&action.scope)?.len() > 4096
                 || canonical_bytes(&action.scope).is_err()
             {
@@ -503,7 +504,10 @@ impl Store {
         for rule in &manifest.rules {
             if !identifier(&rule.id)
                 || rule.equals.is_empty()
-                || !manifest.actions.iter().any(|a| a.id == rule.action)
+                || !manifest
+                    .actions
+                    .iter()
+                    .any(|a| a.id == rule.action && !a.selectable())
             {
                 return Err(Fault::bad());
             }
@@ -768,6 +772,7 @@ impl Store {
                 &rule.action,
                 &format!("policy:{}:{}", revision, rule.id),
                 now,
+                None,
             );
         }
         Ok(review)
@@ -808,6 +813,7 @@ impl Store {
         action_id: &str,
         actor: &str,
         now: i64,
+        scope: Option<&serde_json::Value>,
     ) -> Result<Review> {
         if review.state != ReviewState::Pending || review.expires_at_ms <= now {
             return Err(Fault::conflict());
@@ -820,7 +826,7 @@ impl Store {
             .actions
             .iter()
             .find(|a| a.id == action_id)
-            .cloned()
+            .and_then(|action| action.resolve_scope(scope))
             .ok_or_else(Fault::bad)?;
         let tx = self
             .db
@@ -885,7 +891,13 @@ impl Store {
         if request.revision != review.revision {
             return Err(Fault::conflict());
         }
-        self.commit_decision(review, &request.action_id, &actor.spec.id, now_ms())
+        self.commit_decision(
+            review,
+            &request.action_id,
+            &actor.spec.id,
+            now_ms(),
+            request.scope.as_ref(),
+        )
     }
     pub fn cancel(&mut self, actor: &Principal, id: &str) -> Result<Review> {
         actor.require(Role::Producer)?;
@@ -1570,6 +1582,7 @@ impl Store {
             &reply.action_id,
             &format!("{}:{}", actor.spec.realm, reply.actor),
             now_ms(),
+            None,
         )?;
         self.db.execute(
             "UPDATE deliveries SET status='settled' WHERE request_id=?1",
@@ -1673,6 +1686,7 @@ mod tests {
     }
     fn decide() -> DecideRequest {
         DecideRequest {
+            scope: None,
             revision: 1,
             action_id: "allow-once".into(),
         }
@@ -1689,6 +1703,39 @@ mod tests {
             .unwrap();
     }
 
+    #[test]
+    fn selected_scopes_are_explicit_validated_audited_and_never_automatic() {
+        let (mut store, producer) = fixture();
+        let mut queue = manifest();
+        queue.actions[0].scope = json!({"$selection":{"type":"object","fields":{
+            "destination":{"type":"string","max_len":16,"choices":["host","ip"]}},"required":["destination"]}});
+        store.put_queue(&admin(), queue.clone()).unwrap();
+        let request = store.submit(&producer, submission()).unwrap();
+        assert!(store.decide(&admin(), &request.id, decide()).is_err());
+        for scope in [
+            json!({"destination":"any"}),
+            json!({"destination":"host","extra":true}),
+            json!({}),
+        ] {
+            let mut choice = decide();
+            choice.scope = Some(scope);
+            assert!(store.decide(&admin(), &request.id, choice).is_err());
+        }
+        let mut choice = decide();
+        choice.scope = Some(json!({"destination":"host"}));
+        let settled = store.decide(&admin(), &request.id, choice.clone()).unwrap();
+        assert_eq!(
+            settled.decision.unwrap().action.scope,
+            json!({"destination":"host"})
+        );
+        assert!(store.decide(&admin(), &request.id, choice).is_err());
+        queue.rules.push(PolicyRule {
+            id: "auto".into(),
+            equals: std::collections::BTreeMap::from([("target".into(), json!("example.invalid"))]),
+            action: "allow-once".into(),
+        });
+        assert!(store.put_queue(&admin(), queue).is_err());
+    }
     #[test]
     fn idempotency_is_scoped_and_payload_changes_conflict() {
         let (mut store, producer) = fixture();
@@ -1764,6 +1811,7 @@ mod tests {
                     &admin(),
                     &request.id,
                     DecideRequest {
+                        scope: None,
                         revision: 1,
                         action_id: "deny-once".into()
                     }

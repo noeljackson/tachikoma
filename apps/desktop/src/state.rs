@@ -190,7 +190,7 @@ impl State {
                     && review
                         .actions
                         .iter()
-                        .any(|action| action == &confirmation.action)
+                        .any(|action| action.permits(&confirmation.action))
             })
     }
     pub fn select(&mut self, id: String) {
