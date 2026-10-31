@@ -1,6 +1,15 @@
+> Implementation update: the generic daemon, public JSON API, durable workers,
+> Snitchgate producer, Kubernetes observation service, TUI/web/Slack clients,
+> historical investigations and metadata import now exist in this workspace.
+> See [operations](approval-operations.md) and [wire contract](adapter-api.md).
+> Live workstation cutover is separate from fixture verification. The original
+> proposal below retains longer-term targets such as remote TLS, transcript
+> import, additional providers and registry integration; these are not implied
+> by the current local release. Registrygate remains last and in its own repo.
+
 # Tachikoma monorepo and adapter implementation plan
 
-Status: proposed implementation plan, updated 23 October 2026. Tachikoma becomes
+Status: implementation plan and release checklist, updated 23 October 2026. Tachikoma becomes
 an approval control plane with independently built service adapters. The first
 working integration is Snitchgate. Complete the control plane, review interfaces,
 public adapter contract and Kubernetes extraction before implementing Registrygate.
@@ -69,14 +78,14 @@ with their owning services. Tachikoma does not gain those credentials to
 perform investigations. A producer-reported outcome is an audit statement,
 not independent proof of a kernel change, package installation or cluster state.
 
-## Current implementation and migration constraints
+## Prototype baseline and migration constraints
 
 The prototype has SQLite proposals, idempotency keys, Connect/gRPC services,
 a loopback web UI, a Ratatui client and durable investigation transcripts.
 The queue UI work in [PR 4](https://github.com/noeljackson/tachikoma/pull/4)
 adds adapter filters, counts, previews and refresh. The dependency fixes are in
-[PR 3](https://github.com/noeljackson/tachikoma/pull/3). These changes do not
-implement the service decision protocol described here.
+[PR 3](https://github.com/noeljackson/tachikoma/pull/3). Those baseline changes alone did not implement the decision protocol. The new
+workspace implementation is documented in the update and linked guides above.
 
 The important gaps are concrete:
 
@@ -126,7 +135,7 @@ protocol/
   schemas/                   generic manifest and evidence envelope schemas
   fixtures/                  compatibility request and response fixtures
 crates/
-  approval-protocol/         generated wire types only
+  approval-protocol/         versioned serde wire types only
   approval-client/           optional transport retries and protocol helpers
   control-plane/             Tachikoma request lifecycle and policy
   control-store/             Tachikoma persistence migrations and job leases
@@ -240,14 +249,13 @@ rewriting historical subjects or giving old records new authority.
 
 ## Public adapter API
 
-Add `tachikoma.approval.v1` beside the prototype proposal API. Reuse the existing
-Connect approach, with generated protobuf contracts and a documented JSON
-mapping. Simple clients can use unary HTTP JSON calls; generated clients may
-use protobuf. Start with unary calls and bounded long polling, then add a
-resumable server stream as an optimization. This avoids requiring streaming
-support for a service developed in another repository.
-[Connect unary JSON support](https://connectrpc.com/docs/curl-and-other-clients/),
-[Connect protocol](https://connectrpc.com/docs/protocol/).
+The implemented `approval.v1` contract uses HTTP JSON under `/api/approval/v1`
+on the private Unix socket, with bounded cursor polling. The public serde types
+and the language-independent [adapter guide](adapter-api.md) define its wire
+format. The standalone example uses Python stdlib HTTP without generated code.
+The prototype Connect API remains only in `tachikoma-legacyd`; it has no
+authority in the new store. A future streaming transport must preserve these
+same persisted request, deadline, authorization and decision bindings.
 
 | Operation | Authorized caller | Required behavior |
 | --- | --- | --- |

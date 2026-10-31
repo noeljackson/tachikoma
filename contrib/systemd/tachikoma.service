@@ -1,12 +1,12 @@
 [Unit]
-Description=Tachikoma local proposal control plane
+Description=Tachikoma approval control plane
 Documentation=https://github.com/noeljackson/tachikoma
 
 [Service]
-Type=simple
-Environment=PATH=%h/.npm-global/bin:%h/.local/bin:/usr/local/bin:/usr/bin
-EnvironmentFile=-%h/.config/tachikoma/ai.env
-ExecStart=/usr/bin/env tachikomad
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=30s
+ExecStart=/usr/bin/env -i HOME=%h XDG_RUNTIME_DIR=%t PATH=/usr/local/bin:/usr/bin NOTIFY_SOCKET=${NOTIFY_SOCKET} %h/.local/bin/tachikomad
 Restart=on-failure
 RestartSec=5s
 UMask=0077

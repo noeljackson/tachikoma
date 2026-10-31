@@ -1,0 +1,95 @@
+{
+  "queue": "network.egress",
+  "default": {
+    "kind": "ask"
+  },
+  "rules": [
+    {
+      "id": "install-credential-open",
+      "description": "Review an install process with a prior watched-file open. PID/path correlation is approximate, not verified identity; this preview never enforces.",
+      "requires": [],
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "equals",
+            "path": "/assessment/judgments/origin/choice",
+            "value": "dependency_lifecycle"
+          },
+          {
+            "op": "observed",
+            "source": "host.tetragon",
+            "capability": "host.sensitive_file_open",
+            "within_ms": 60000,
+            "joins": {
+              "/process/pid": "/subject/pid",
+              "/process/path": "/subject/process"
+            },
+            "equals": {
+              "/operation": "open_attempt"
+            }
+          }
+        ]
+      },
+      "then": {
+        "kind": "ask"
+      },
+      "on_unavailable": "continue"
+    },
+    {
+      "id": "prior-network-alert",
+      "description": "Review a prior high-severity alert matching the configured flow fields. A future Suricata alert cannot be used to authorize the initial connection.",
+      "requires": [],
+      "when": {
+        "op": "observed",
+        "source": "network.suricata",
+        "capability": "network.alert",
+        "within_ms": 60000,
+        "joins": {
+          "/source_ip": "/evidence/process_context/source_ip",
+          "/source_port": "/evidence/process_context/source_port",
+          "/destination_ip": "/subject/ip",
+          "/destination_port": "/subject/port",
+          "/protocol": "/subject/protocol"
+        },
+        "equals": {
+          "/severity": 1
+        }
+      },
+      "then": {
+        "kind": "ask"
+      },
+      "on_unavailable": "continue"
+    },
+    {
+      "id": "local-test-shadow",
+      "description": "Illustrative Jev-based shadow recommendation; 0.9 is not a validated permission threshold. No automatic decision is executed.",
+      "requires": [],
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "equals",
+            "path": "/assessment/category",
+            "value": "development"
+          },
+          {
+            "op": "equals",
+            "path": "/assessment/judgments/activity/choice",
+            "value": "local_test"
+          },
+          {
+            "op": "at_least",
+            "path": "/assessment/confidence",
+            "value": 0.9
+          }
+        ]
+      },
+      "then": {
+        "kind": "action",
+        "action_id": "allow-once"
+      },
+      "on_unavailable": "ask"
+    }
+  ]
+}
