@@ -128,6 +128,12 @@ migration before then. The scanner pin was advanced to
 `97df5883cf9a3de3d2c81693374f958badc02fc3` to support explicit reviewed exceptions
 and its offline coverage diagnostics; all advisory severities remain enabled.
 
+The legacy Connect RPC explicitly enables gzip, JSON and streaming without its
+optional Zstandard feature. No application call site requires Zstandard; removing
+it also removes `zstd`, `zstd-safe` and `zstd-sys` from the lockfile. This removes
+the dependency path rather than adding advisory exceptions. The central approval
+protocol and native desktop do not use this compression feature.
+
 ## Decisions made in the OpenSnitch popup
 
 The optional fallback relay publishes returned popup actions to the **OpenSnitch

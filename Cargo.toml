@@ -40,7 +40,8 @@ async-trait = "0.1.92"
 axum = "0.8.8"
 buffa = "0.8.1"
 clap = { version = "4.5.60", features = ["derive"] }
-connectrpc = { version = "0.8.2", features = ["axum", "client", "server"] }
+# The legacy local RPC needs gzip/JSON/streaming, but never Zstandard.
+connectrpc = { version = "0.8.2", default-features = false, features = ["axum", "client", "server", "gzip", "json", "streaming"] }
 crossterm = "0.29.0"
 dirs = "6.0.0"
 futures-util = "0.3.33"

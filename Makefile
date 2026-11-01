@@ -1,3 +1,6 @@
+# Recipes use pipefail; Ubuntu's /bin/sh is dash.
+SHELL := /bin/bash
+
 SUPPLYCHAIN_SRC ?= $(HOME)/src/noeljackson/supplychain
 SUPPLYCHAIN_REF := 97df5883cf9a3de3d2c81693374f958badc02fc3
 INSTALL_PREFIX ?= $(HOME)/.local
