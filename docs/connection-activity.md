@@ -18,6 +18,11 @@ rule-name reference. Arguments, environment, cwd, checksums, source payloads and
 raw rule names are omitted. Strings and batches are bounded. There is no HTTP
 payload, file identity verification or complete packet capture.
 
+Only valid TCP/UDP observations with a parsed destination IP, valid port,
+positive timestamp and reported rule are retained. Unsupported or malformed
+entries increment `dropped`, as do batch limits and queue overload. This stream
+does not promise the same event coverage as the original GUI database.
+
 The gRPC callback sanitizes up to 512 events per batch and uses a nonblocking queue
 of eight batches. A dedicated SQLite writer applies transactions, deduplication,
 seven-day retention and a 50,000-row cap. Database pages are capped at 128 MiB;
