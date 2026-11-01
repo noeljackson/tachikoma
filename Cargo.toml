@@ -1,7 +1,13 @@
+[workspace]
+resolver = "3"
+members = [".", "services/snitchgate", "crates/approval-protocol", "crates/approval-client", "crates/control-plane", "apps/tui", "workers/assessment", "workers/review-slack", "services/kubernetesgate", "apps/web", "apps/daemon", "services/evidence-source", "apps/desktop"]
+default-members = ["."]
+
 [package]
 name = "tachikoma"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.96"
 license = "MIT"
 description = "Local-first policy proposal control plane"
 repository = "https://github.com/noeljackson/tachikoma"
@@ -15,7 +21,7 @@ path = "src/lib.rs"
 doctest = false
 
 [[bin]]
-name = "tachikomad"
+name = "tachikoma-legacyd"
 path = "src/main.rs"
 
 [[bin]]
@@ -23,13 +29,19 @@ name = "tachikoma"
 path = "src/cli.rs"
 
 [dependencies]
+approval-protocol = { path = "crates/approval-protocol" }
+approval-client = { path = "crates/approval-client" }
+approval-tui = { path = "apps/tui" }
 anyhow = "1.0.100"
-askama = "0.16.0"
-async-trait = "0.1.89"
+# The dashboard uses default template paths, so avoid the optional config
+# parser and its unmaintained basic-toml dependency.
+askama = { version = "0.16.0", default-features = false, features = ["derive", "std", "urlencode"] }
+async-trait = "0.1.92"
 axum = "0.8.8"
 buffa = "0.8.1"
 clap = { version = "4.5.60", features = ["derive"] }
-connectrpc = { version = "0.8.1", features = ["axum", "client", "server"] }
+# The legacy local RPC needs gzip/JSON/streaming, but never Zstandard.
+connectrpc = { version = "0.8.2", default-features = false, features = ["axum", "client", "server", "gzip", "json", "streaming"] }
 crossterm = "0.29.0"
 dirs = "6.0.0"
 futures-util = "0.3.33"
@@ -59,3 +71,10 @@ tower = { version = "0.5.3", features = ["util"] }
 
 [build-dependencies]
 connectrpc-build = "0.8.0"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[package.metadata.tachikoma]
+boundary = "control"

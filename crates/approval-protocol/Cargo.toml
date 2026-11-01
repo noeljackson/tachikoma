@@ -1,0 +1,15 @@
+[package]
+name = "approval-protocol"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+repository = "https://github.com/noeljackson/tachikoma"
+description = "Versioned domain-independent approval wire contracts"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[package.metadata.tachikoma]
+boundary = "protocol"

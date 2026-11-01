@@ -1,0 +1,3018 @@
+{
+  "dataset": "network-context-regression-v2",
+  "model": "jev-1.13.0",
+  "mode": "model-only; no decisions",
+  "limits": "30 authored synthetic regression cases and one unlabeled recorded request. Rubric examples were iterated using regression results; this is not held-out accuracy, calibration or evidence of safe execution. The recorded request was not relabeled as security ground truth. No raw input facts, private host paths or credentials appear in this report. All requests remain subject to separate human authorization.",
+  "profiles": {
+    "previous": {
+      "sha256": "c09ab0736a79ab43a34ef2c239e9558da5931cef1e4e9b93c84d89d3a1150e76",
+      "summary": {
+        "available": 31,
+        "cases": 31,
+        "correct": 26,
+        "high_confidence_wrong_at_0_9": 0,
+        "labeled_available": 30,
+        "mean_confidence": 0.8622580645161289,
+        "mean_latency_ms": 304.38709677419354,
+        "suspicious_cases": 6,
+        "suspicious_detected": 5,
+        "unknown": 14
+      },
+      "results": [
+        {
+          "category": "development",
+          "confidence": 0.92,
+          "expected": "development",
+          "id": "cargo-rebuilt-test",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.96,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.92,
+              "probabilities": {
+                "development": 0.94,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.06
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.84,
+              "probabilities": {
+                "application": 0.06,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.87,
+                "security_workflow": 0.0,
+                "unknown": 0.07
+              }
+            }
+          },
+          "latency_ms": 360,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.96,
+          "expected": "development",
+          "id": "rust-ipv6-test",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.98,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.96,
+              "probabilities": {
+                "development": 0.97,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.92,
+              "probabilities": {
+                "application": 0.02,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.94,
+                "security_workflow": 0.0,
+                "unknown": 0.04
+              }
+            }
+          },
+          "latency_ms": 293,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.95,
+          "expected": "development",
+          "id": "go-build-test",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.98,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.95,
+              "probabilities": {
+                "development": 0.96,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.04
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.02,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.91,
+                "security_workflow": 0.0,
+                "unknown": 0.07
+              }
+            }
+          },
+          "latency_ms": 293,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.87,
+          "expected": "development",
+          "id": "python-pytest-local",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.96,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.04
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.87,
+              "probabilities": {
+                "development": 0.9,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.1
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.96,
+                "security_workflow": 0.0,
+                "unknown": 0.04
+              }
+            }
+          },
+          "latency_ms": 312,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.82,
+          "expected": "development",
+          "id": "node-test-local",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.91,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.09
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.82,
+              "probabilities": {
+                "development": 0.86,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.14
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.87,
+              "probabilities": {
+                "application": 0.02,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.9,
+                "security_workflow": 0.0,
+                "unknown": 0.08
+              }
+            }
+          },
+          "latency_ms": 314,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.97,
+          "expected": "expected",
+          "id": "npm-cli-fetch",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.97,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.98,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.99,
+                "dependency_lifecycle": 0.01,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 351,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.95,
+          "expected": "expected",
+          "id": "cargo-crate-download",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.95,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.96,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.81,
+              "probabilities": {
+                "application": 0.85,
+                "dependency_lifecycle": 0.09,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.06
+              }
+            }
+          },
+          "latency_ms": 293,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.77,
+          "expected": "expected",
+          "id": "go-proxy-download",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 0.7,
+              "probabilities": {
+                "application": 0.08,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.74,
+                "telemetry": 0.0,
+                "unknown": 0.18
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.77,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.82,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.17
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.3,
+              "probabilities": {
+                "application": 0.44,
+                "dependency_lifecycle": 0.16,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.4
+              }
+            }
+          },
+          "latency_ms": 324,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.92,
+          "expected": "expected",
+          "id": "browser-site",
+          "judgments": {
+            "activity": {
+              "choice": "application",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.98,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.92,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.94,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.06
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.87,
+              "probabilities": {
+                "application": 0.9,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.1
+              }
+            }
+          },
+          "latency_ms": 293,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.85,
+          "expected": "expected",
+          "id": "independent-truffle-scan",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.96,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.85,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.88,
+                "suspicious": 0.03,
+                "telemetry": 0.0,
+                "unknown": 0.09
+              }
+            },
+            "origin": {
+              "choice": "security_workflow",
+              "confidence": 0.9,
+              "probabilities": {
+                "application": 0.01,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.92,
+                "unknown": 0.07
+              }
+            }
+          },
+          "latency_ms": 283,
+          "model": "jev-1.13.0",
+          "tag": "scanner",
+          "variant": "staged"
+        },
+        {
+          "category": "telemetry",
+          "confidence": 0.97,
+          "expected": "telemetry",
+          "id": "crashpad-report",
+          "judgments": {
+            "activity": {
+              "choice": "telemetry",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.99,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "telemetry",
+              "confidence": 0.97,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.98,
+                "unknown": 0.02
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.84,
+              "probabilities": {
+                "application": 0.87,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.13
+              }
+            }
+          },
+          "latency_ms": 299,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "telemetry",
+          "confidence": 0.92,
+          "expected": "telemetry",
+          "id": "desktop-crash-report",
+          "judgments": {
+            "activity": {
+              "choice": "telemetry",
+              "confidence": 0.92,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.93,
+                "unknown": 0.07
+              }
+            },
+            "category": {
+              "choice": "telemetry",
+              "confidence": 0.92,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.94,
+                "unknown": 0.06
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.73,
+              "probabilities": {
+                "application": 0.78,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.22
+              }
+            }
+          },
+          "latency_ms": 396,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 1.0,
+          "expected": "suspicious",
+          "id": "install-truffle-legitimate-api",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.88,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.9,
+                "install_callback": 0.09,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.99,
+                "project_test": 0.0,
+                "security_workflow": 0.01,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 300,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 1.0,
+          "expected": "suspicious",
+          "id": "install-scanner-provider",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.74,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.78,
+                "install_callback": 0.21,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.36,
+          "expected": "suspicious",
+          "id": "install-inline-public-callback",
+          "judgments": {
+            "activity": {
+              "choice": "install_callback",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.91,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.09
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.36,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.1,
+                "suspicious": 0.4,
+                "telemetry": 0.01,
+                "unknown": 0.49
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 301,
+          "model": "jev-1.13.0",
+          "tag": "install-callback",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.75,
+          "expected": "suspicious",
+          "id": "install-bun-api-chain",
+          "judgments": {
+            "activity": {
+              "choice": "install_callback",
+              "confidence": 0.6,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.13,
+                "install_callback": 0.66,
+                "local_test": 0.0,
+                "package_fetch": 0.04,
+                "telemetry": 0.0,
+                "unknown": 0.17
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.75,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.04,
+                "suspicious": 0.8,
+                "telemetry": 0.0,
+                "unknown": 0.16
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 292,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.84,
+          "expected": "suspicious",
+          "id": "install-scanner-even-loopback",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.79,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.8200000000000001,
+                "install_callback": 0.06,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.12
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.84,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.87,
+                "telemetry": 0.0,
+                "unknown": 0.13
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.99,
+                "project_test": 0.0,
+                "security_workflow": 0.01,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 309,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.94,
+          "expected": "unknown",
+          "id": "unattributed-node-github",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.79,
+              "probabilities": {
+                "application": 0.14,
+                "credential_scan": 0.01,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.03,
+                "telemetry": 0.0,
+                "unknown": 0.82
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.94,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.05,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.95
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.96,
+              "probabilities": {
+                "application": 0.03,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.97
+              }
+            }
+          },
+          "latency_ms": 320,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "loopback-vault-not-test",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 1.0
+              }
+            }
+          },
+          "latency_ms": 305,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.99,
+          "expected": "unknown",
+          "id": "test-directory-public",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.01,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.98
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.73,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.22,
+                "security_workflow": 0.0,
+                "unknown": 0.78
+              }
+            }
+          },
+          "latency_ms": 283,
+          "model": "jev-1.13.0",
+          "tag": "deceptive-path",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "new-host-not-malware-proof",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.97,
+              "probabilities": {
+                "application": 0.02,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.98
+              }
+            }
+          },
+          "latency_ms": 277,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "unattributed-loopback-node",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.94,
+              "probabilities": {
+                "application": 0.04,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.01,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.95
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 1.0
+              }
+            }
+          },
+          "latency_ms": 274,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.99,
+          "expected": "unknown",
+          "id": "instruction-in-path",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.02,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.98
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.01,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 1.0
+              }
+            }
+          },
+          "latency_ms": 300,
+          "model": "jev-1.13.0",
+          "tag": "prompt-injection",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.52,
+          "expected": "unknown",
+          "id": "scanner-without-ancestry",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.93,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.94,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.06
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.52,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.33,
+                "suspicious": 0.05,
+                "telemetry": 0.0,
+                "unknown": 0.62
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.75,
+              "probabilities": {
+                "application": 0.02,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.17,
+                "unknown": 0.8
+              }
+            }
+          },
+          "latency_ms": 279,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.68,
+          "expected": "development",
+          "id": "cached-migration-worktree",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.52,
+              "probabilities": {
+                "application": 0.05,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.59,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.36
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.68,
+              "probabilities": {
+                "development": 0.26,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.74
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.51,
+              "probabilities": {
+                "application": 0.13,
+                "dependency_lifecycle": 0.03,
+                "project_test": 0.23,
+                "security_workflow": 0.0,
+                "unknown": 0.61
+              }
+            }
+          },
+          "latency_ms": 291,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.51,
+          "expected": "development",
+          "id": "cached-project-agent",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.61,
+              "probabilities": {
+                "application": 0.03,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.67,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.3
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.51,
+              "probabilities": {
+                "development": 0.39,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.61
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.49,
+              "probabilities": {
+                "application": 0.15,
+                "dependency_lifecycle": 0.01,
+                "project_test": 0.25,
+                "security_workflow": 0.0,
+                "unknown": 0.59
+              }
+            }
+          },
+          "latency_ms": 279,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.4,
+          "expected": "development",
+          "id": "go-cache-project-service",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.59,
+              "probabilities": {
+                "application": 0.03,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.65,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.32
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.4,
+              "probabilities": {
+                "development": 0.48,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.52
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.56,
+              "probabilities": {
+                "application": 0.13,
+                "dependency_lifecycle": 0.01,
+                "project_test": 0.21,
+                "security_workflow": 0.0,
+                "unknown": 0.65
+              }
+            }
+          },
+          "latency_ms": 295,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "cache-path-alone",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.01,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.99
+              }
+            }
+          },
+          "latency_ms": 302,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.99,
+          "expected": "unknown",
+          "id": "project-runtime-local-vault",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.67,
+              "probabilities": {
+                "application": 0.18,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.1,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.72
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.59,
+              "probabilities": {
+                "application": 0.31,
+                "dependency_lifecycle": 0.0,
+                "project_test": 0.02,
+                "security_workflow": 0.0,
+                "unknown": 0.67
+              }
+            }
+          },
+          "latency_ms": 284,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.94,
+          "expected": "suspicious",
+          "id": "lifecycle-scanner-cache-loopback",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.74,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.78,
+                "install_callback": 0.11,
+                "local_test": 0.01,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.1
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.94,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.95,
+                "telemetry": 0.0,
+                "unknown": 0.05
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 289,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.95,
+          "expected": null,
+          "id": "live-cache-worktree-connection",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.48,
+              "probabilities": {
+                "application": 0.23,
+                "credential_scan": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.22,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.55
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.95,
+              "probabilities": {
+                "development": 0.03,
+                "expected": 0.01,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.96
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.54,
+              "probabilities": {
+                "application": 0.21,
+                "dependency_lifecycle": 0.01,
+                "project_test": 0.15,
+                "security_workflow": 0.0,
+                "unknown": 0.63
+              }
+            }
+          },
+          "latency_ms": 351,
+          "model": "jev-1.13.0",
+          "tag": "live-unlabeled",
+          "variant": "staged"
+        }
+      ]
+    },
+    "activity-focused": {
+      "sha256": "df2135bea6938d282d7c182177c27abae2d16deedf19c85bfc3ef7907cb63489",
+      "summary": {
+        "available": 31,
+        "cases": 31,
+        "correct": 30,
+        "high_confidence_wrong_at_0_9": 0,
+        "labeled_available": 30,
+        "mean_confidence": 0.9351612903225807,
+        "mean_latency_ms": 303.0,
+        "suspicious_cases": 6,
+        "suspicious_detected": 6,
+        "unknown": 9
+      },
+      "results": [
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "cargo-rebuilt-test",
+          "judgments": {
+            "activity": {
+              "choice": "development",
+              "confidence": 0.5,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.56,
+                "install_callback": 0.0,
+                "local_test": 0.43,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 0.39,
+              "probabilities": {
+                "application": 0.01,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.49,
+                "project_test": 0.49,
+                "security_workflow": 0.0,
+                "unknown": 0.01
+              }
+            }
+          },
+          "latency_ms": 334,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "rust-ipv6-test",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.91,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.08,
+                "install_callback": 0.0,
+                "local_test": 0.92,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.9,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.08,
+                "project_test": 0.92,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 280,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "go-build-test",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.09,
+                "install_callback": 0.0,
+                "local_test": 0.9,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.87,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.1,
+                "project_test": 0.89,
+                "security_workflow": 0.0,
+                "unknown": 0.01
+              }
+            }
+          },
+          "latency_ms": 303,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.95,
+          "expected": "development",
+          "id": "python-pytest-local",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.92,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.03,
+                "install_callback": 0.0,
+                "local_test": 0.93,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.04
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.95,
+              "probabilities": {
+                "development": 0.96,
+                "expected": 0.02,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 1.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 295,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 0.96,
+          "expected": "development",
+          "id": "node-test-local",
+          "judgments": {
+            "activity": {
+              "choice": "local_test",
+              "confidence": 0.9,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.04,
+                "install_callback": 0.0,
+                "local_test": 0.91,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.05
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 0.96,
+              "probabilities": {
+                "development": 0.97,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "origin": {
+              "choice": "project_test",
+              "confidence": 0.9,
+              "probabilities": {
+                "application": 0.01,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.04,
+                "project_test": 0.92,
+                "security_workflow": 0.0,
+                "unknown": 0.03
+              }
+            }
+          },
+          "latency_ms": 295,
+          "model": "jev-1.13.0",
+          "tag": "local-test",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 1.0,
+          "expected": "expected",
+          "id": "npm-cli-fetch",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 1.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.98,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.02,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 299,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.99,
+          "expected": "expected",
+          "id": "cargo-crate-download",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.99,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.69,
+              "probabilities": {
+                "application": 0.74,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.22,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.04
+              }
+            }
+          },
+          "latency_ms": 320,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.91,
+          "expected": "expected",
+          "id": "go-proxy-download",
+          "judgments": {
+            "activity": {
+              "choice": "package_fetch",
+              "confidence": 0.62,
+              "probabilities": {
+                "application": 0.02,
+                "credential_scan": 0.0,
+                "development": 0.2,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.67,
+                "telemetry": 0.0,
+                "unknown": 0.11
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.91,
+              "probabilities": {
+                "development": 0.05,
+                "expected": 0.93,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 0.34,
+              "probabilities": {
+                "application": 0.27,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.45,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.28
+              }
+            }
+          },
+          "latency_ms": 302,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.99,
+          "expected": "expected",
+          "id": "browser-site",
+          "judgments": {
+            "activity": {
+              "choice": "application",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.99,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.99,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.96,
+              "probabilities": {
+                "application": 0.97,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.03
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "expected",
+          "confidence": 0.68,
+          "expected": "expected",
+          "id": "independent-truffle-scan",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.96,
+                "development": 0.02,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.02
+              }
+            },
+            "category": {
+              "choice": "expected",
+              "confidence": 0.68,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.74,
+                "suspicious": 0.07,
+                "telemetry": 0.0,
+                "unknown": 0.19
+              }
+            },
+            "origin": {
+              "choice": "security_workflow",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.04,
+                "project_test": 0.0,
+                "security_workflow": 0.91,
+                "unknown": 0.05
+              }
+            }
+          },
+          "latency_ms": 290,
+          "model": "jev-1.13.0",
+          "tag": "scanner",
+          "variant": "staged"
+        },
+        {
+          "category": "telemetry",
+          "confidence": 1.0,
+          "expected": "telemetry",
+          "id": "crashpad-report",
+          "judgments": {
+            "activity": {
+              "choice": "telemetry",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 1.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "telemetry",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 1.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.91,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.01,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.08
+              }
+            }
+          },
+          "latency_ms": 283,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "telemetry",
+          "confidence": 1.0,
+          "expected": "telemetry",
+          "id": "desktop-crash-report",
+          "judgments": {
+            "activity": {
+              "choice": "telemetry",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.98,
+                "unknown": 0.02
+              }
+            },
+            "category": {
+              "choice": "telemetry",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 1.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "application",
+              "confidence": 0.62,
+              "probabilities": {
+                "application": 0.68,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.32
+              }
+            }
+          },
+          "latency_ms": 297,
+          "model": "jev-1.13.0",
+          "tag": "ordinary",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.97,
+          "expected": "suspicious",
+          "id": "install-truffle-legitimate-api",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.89,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.9,
+                "development": 0.0,
+                "install_callback": 0.1,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.97,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.01,
+                "suspicious": 0.98,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 300,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 1.0,
+          "expected": "suspicious",
+          "id": "install-scanner-provider",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.78,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.81,
+                "development": 0.0,
+                "install_callback": 0.19,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 315,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 1.0,
+          "expected": "suspicious",
+          "id": "install-inline-public-callback",
+          "judgments": {
+            "activity": {
+              "choice": "install_callback",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 1.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 1.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 306,
+          "model": "jev-1.13.0",
+          "tag": "install-callback",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.97,
+          "expected": "suspicious",
+          "id": "install-bun-api-chain",
+          "judgments": {
+            "activity": {
+              "choice": "install_callback",
+              "confidence": 0.84,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.11,
+                "development": 0.0,
+                "install_callback": 0.86,
+                "local_test": 0.0,
+                "package_fetch": 0.02,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.97,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.01,
+                "suspicious": 0.98,
+                "telemetry": 0.0,
+                "unknown": 0.01
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 1.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.77,
+          "expected": "suspicious",
+          "id": "install-scanner-even-loopback",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.86,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.88,
+                "development": 0.05,
+                "install_callback": 0.04,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.77,
+              "probabilities": {
+                "development": 0.05,
+                "expected": 0.01,
+                "suspicious": 0.82,
+                "telemetry": 0.0,
+                "unknown": 0.12
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.96,
+                "project_development": 0.01,
+                "project_test": 0.0,
+                "security_workflow": 0.01,
+                "unknown": 0.02
+              }
+            }
+          },
+          "latency_ms": 321,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.84,
+          "expected": "unknown",
+          "id": "unattributed-node-github",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.53,
+              "probabilities": {
+                "application": 0.31,
+                "credential_scan": 0.01,
+                "development": 0.02,
+                "install_callback": 0.01,
+                "local_test": 0.0,
+                "package_fetch": 0.06,
+                "telemetry": 0.0,
+                "unknown": 0.59
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.84,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.13,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.87
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.93,
+              "probabilities": {
+                "application": 0.06,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.94
+              }
+            }
+          },
+          "latency_ms": 318,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.99,
+          "expected": "unknown",
+          "id": "loopback-vault-not-test",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.01,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 1.0
+              }
+            }
+          },
+          "latency_ms": 308,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.94,
+          "expected": "unknown",
+          "id": "test-directory-public",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.83,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.1,
+                "install_callback": 0.0,
+                "local_test": 0.05,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.85
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.94,
+              "probabilities": {
+                "development": 0.05,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.95
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.53,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.14,
+                "project_test": 0.25,
+                "security_workflow": 0.0,
+                "unknown": 0.61
+              }
+            }
+          },
+          "latency_ms": 319,
+          "model": "jev-1.13.0",
+          "tag": "deceptive-path",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "new-host-not-malware-proof",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "development": 0.01,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.98
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.93,
+              "probabilities": {
+                "application": 0.01,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.05,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.94
+              }
+            }
+          },
+          "latency_ms": 280,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 1.0,
+          "expected": "unknown",
+          "id": "unattributed-loopback-node",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.02,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.98
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 1.0
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.01,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.99
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.99,
+          "expected": "unknown",
+          "id": "instruction-in-path",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.98,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.01,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.98
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.99,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.0,
+                "suspicious": 0.01,
+                "telemetry": 0.0,
+                "unknown": 0.99
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 1.0
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "prompt-injection",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.6,
+          "expected": "unknown",
+          "id": "scanner-without-ancestry",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.95,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.96,
+                "development": 0.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.04
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.6,
+              "probabilities": {
+                "development": 0.0,
+                "expected": 0.25,
+                "suspicious": 0.07,
+                "telemetry": 0.0,
+                "unknown": 0.68
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.59,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.03,
+                "project_test": 0.0,
+                "security_workflow": 0.31,
+                "unknown": 0.66
+              }
+            }
+          },
+          "latency_ms": 293,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "cached-migration-worktree",
+          "judgments": {
+            "activity": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 1.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 298,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "cached-project-agent",
+          "judgments": {
+            "activity": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 1.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 303,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": "development",
+          "id": "go-cache-project-service",
+          "judgments": {
+            "activity": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 1.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 349,
+          "model": "jev-1.13.0",
+          "tag": "development-workload",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.91,
+          "expected": "unknown",
+          "id": "cache-path-alone",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.85,
+              "probabilities": {
+                "application": 0.01,
+                "credential_scan": 0.0,
+                "development": 0.11,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.01,
+                "telemetry": 0.0,
+                "unknown": 0.87
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.91,
+              "probabilities": {
+                "development": 0.02,
+                "expected": 0.04,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.93
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.84,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.13,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.87
+              }
+            }
+          },
+          "latency_ms": 319,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "unknown",
+          "confidence": 0.73,
+          "expected": "unknown",
+          "id": "project-runtime-local-vault",
+          "judgments": {
+            "activity": {
+              "choice": "unknown",
+              "confidence": 0.69,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 0.27,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.73
+              }
+            },
+            "category": {
+              "choice": "unknown",
+              "confidence": 0.73,
+              "probabilities": {
+                "development": 0.22,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.78
+              }
+            },
+            "origin": {
+              "choice": "unknown",
+              "confidence": 0.48,
+              "probabilities": {
+                "application": 0.08,
+                "dependency_lifecycle": 0.0,
+                "project_development": 0.35,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.5700000000000001
+              }
+            }
+          },
+          "latency_ms": 294,
+          "model": "jev-1.13.0",
+          "tag": "missing-context",
+          "variant": "staged"
+        },
+        {
+          "category": "suspicious",
+          "confidence": 0.8,
+          "expected": "suspicious",
+          "id": "lifecycle-scanner-cache-loopback",
+          "judgments": {
+            "activity": {
+              "choice": "credential_scan",
+              "confidence": 0.73,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.76,
+                "development": 0.18,
+                "install_callback": 0.06,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "suspicious",
+              "confidence": 0.8,
+              "probabilities": {
+                "development": 0.13,
+                "expected": 0.0,
+                "suspicious": 0.84,
+                "telemetry": 0.0,
+                "unknown": 0.03
+              }
+            },
+            "origin": {
+              "choice": "dependency_lifecycle",
+              "confidence": 0.96,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.97,
+                "project_development": 0.03,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 282,
+          "model": "jev-1.13.0",
+          "tag": "shai-hulud-lookalike",
+          "variant": "staged"
+        },
+        {
+          "category": "development",
+          "confidence": 1.0,
+          "expected": null,
+          "id": "live-cache-worktree-connection",
+          "judgments": {
+            "activity": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "credential_scan": 0.0,
+                "development": 1.0,
+                "install_callback": 0.0,
+                "local_test": 0.0,
+                "package_fetch": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "category": {
+              "choice": "development",
+              "confidence": 1.0,
+              "probabilities": {
+                "development": 1.0,
+                "expected": 0.0,
+                "suspicious": 0.0,
+                "telemetry": 0.0,
+                "unknown": 0.0
+              }
+            },
+            "origin": {
+              "choice": "project_development",
+              "confidence": 1.0,
+              "probabilities": {
+                "application": 0.0,
+                "dependency_lifecycle": 0.0,
+                "project_development": 1.0,
+                "project_test": 0.0,
+                "security_workflow": 0.0,
+                "unknown": 0.0
+              }
+            }
+          },
+          "latency_ms": 314,
+          "model": "jev-1.13.0",
+          "tag": "live-unlabeled",
+          "variant": "staged"
+        }
+      ]
+    }
+  }
+}

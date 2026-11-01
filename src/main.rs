@@ -20,7 +20,10 @@ use tachikoma::proto::tachikoma::v1::{
 use tokio::sync::watch;
 
 #[derive(Debug, Parser)]
-#[command(name = "tachikomad", about = "Tachikoma local proposal daemon")]
+#[command(
+    name = "tachikoma-legacyd",
+    about = "Legacy proposal compatibility daemon"
+)]
 struct Args {
     /// JSON configuration file. Defaults to the XDG config directory.
     #[arg(long)]

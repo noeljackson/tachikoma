@@ -1,0 +1,18 @@
+[Unit]
+Description=tachikoma desktop decisions and notifications
+After=graphical-session-pre.target tachikoma.service
+PartOf=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=dbus
+BusName=dev.noel.tachikoma
+ExecStart=/usr/bin/env -i HOME=%h XDG_RUNTIME_DIR=%t PATH=/usr/local/bin:/usr/bin DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus DISPLAY=${DISPLAY} WAYLAND_DISPLAY=${WAYLAND_DISPLAY} XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP} XDG_SESSION_TYPE=${XDG_SESSION_TYPE} LANG=${LANG} XDG_DATA_DIRS=/usr/local/share:/usr/share %h/.local/bin/tachikoma-gui --background
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=20
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

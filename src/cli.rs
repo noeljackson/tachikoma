@@ -1,3 +1,5 @@
+mod approval_cli;
+
 use std::io;
 use std::path::PathBuf;
 
@@ -21,7 +23,10 @@ use tachikoma::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "tachikoma", about = "Tachikoma Connect API client")]
+#[command(
+    name = "tachikoma",
+    about = "Tachikoma approval client (legacy commands retained for migration)"
+)]
 struct Args {
     /// User-owned Tachikoma Connect/gRPC Unix socket.
     #[arg(long)]
@@ -33,12 +38,32 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Public approval API administration and producer operations.
+    Approval {
+        #[arg(long)]
+        credential: Option<PathBuf>,
+        #[arg(long)]
+        endpoint: Option<String>,
+        #[command(subcommand)]
+        command: approval_cli::Command,
+    },
     /// Show daemon and adapter status.
     Status,
     /// List proposals in the durable queue.
-    Queue,
-    /// Open a local terminal UI snapshot of the queue; q or Escape closes it.
-    Tui,
+    Queue {
+        /// Show proposals from this adapter only.
+        #[arg(long)]
+        adapter: Option<String>,
+    },
+    /// Open the terminal UI with service queues and proposal investigations.
+    Tui {
+        /// Start in this adapter's queue.
+        #[arg(long)]
+        adapter: Option<String>,
+        /// Connect to the separately started legacy proposal daemon.
+        #[arg(long)]
+        legacy: bool,
+    },
     /// List compiled and custom models with local authentication status.
     Models,
     /// Open or resume the primary chat investigation for a proposal.
@@ -141,6 +166,7 @@ fn print_latest_assistant(investigation: &tachikoma::proto::tachikoma::v1::Inves
 async fn main() -> Result<()> {
     let args = Args::parse();
     let socket = args.rpc_socket.unwrap_or_else(default_rpc_socket);
+    let approval_socket = socket.clone();
     let connector = tower::service_fn(
         move |mut request: Request<connectrpc::client::ClientBody>| {
             let socket = socket.clone();
@@ -165,6 +191,19 @@ async fn main() -> Result<()> {
     let config = ClientConfig::new("http://tachikoma.local".parse()?);
 
     match args.command {
+        Command::Approval {
+            credential,
+            endpoint,
+            command,
+        } => {
+            approval_cli::run(
+                &approval_socket,
+                endpoint.as_deref(),
+                credential.as_deref(),
+                command,
+            )
+            .await?;
+        }
         Command::Status => {
             let response = StatusServiceClient::new(transport(), config.clone())
                 .get_status(GetStatusRequest::default())
@@ -184,9 +223,12 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Queue => {
+        Command::Queue { adapter } => {
             let response = ProposalServiceClient::new(transport(), config.clone())
-                .list_proposals(ListProposalsRequest::default())
+                .list_proposals(ListProposalsRequest {
+                    adapter: adapter.unwrap_or_default(),
+                    ..Default::default()
+                })
                 .await?
                 .into_owned();
             for proposal in response.proposals {
@@ -196,7 +238,17 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Tui => {
+        Command::Tui { adapter, legacy } => {
+            let credential = approval_cli::default_credential();
+            if !legacy {
+                let client = approval_client::Client::from_credential_file(
+                    "http://tachikoma.local",
+                    Some(&approval_socket),
+                    &credential,
+                )?;
+                approval_tui::run(client, adapter).await?;
+                return Ok(());
+            }
             let response = ProposalServiceClient::new(transport(), config.clone())
                 .list_proposals(ListProposalsRequest::default())
                 .await?
@@ -206,18 +258,41 @@ async fn main() -> Result<()> {
                 .await?
                 .into_owned()
                 .models;
-            let mut app = tachikoma::tui::App::new(response.proposals, models);
+            let status = StatusServiceClient::new(transport(), config.clone())
+                .get_status(GetStatusRequest::default())
+                .await?
+                .into_owned();
+            let mut app =
+                tachikoma::tui::App::new(response.proposals, models, status.adapters, adapter);
+            let mut session = tachikoma::tui::Session::new()?;
             loop {
-                match tachikoma::tui::run(&mut app)? {
+                match session.run(&mut app)? {
                     tachikoma::tui::Action::Quit => break,
+                    tachikoma::tui::Action::RefreshQueue => {
+                        let response = ProposalServiceClient::new(transport(), config.clone())
+                            .list_proposals(ListProposalsRequest::default())
+                            .await?
+                            .into_owned();
+                        let status = StatusServiceClient::new(transport(), config.clone())
+                            .get_status(GetStatusRequest::default())
+                            .await?
+                            .into_owned();
+                        app.update_queue(response.proposals, status.adapters);
+                    }
                     tachikoma::tui::Action::OpenProposal(proposal_id) => {
                         let response = InvestigationServiceClient::new(transport(), config.clone())
                             .open_investigation(OpenInvestigationRequest {
                                 proposal_id,
                                 ..Default::default()
                             })
-                            .await?
-                            .into_owned();
+                            .await;
+                        let response = match response {
+                            Ok(response) => response.into_owned(),
+                            Err(error) => {
+                                app.notice = Some(error.to_string());
+                                continue;
+                            }
+                        };
                         app.set_investigation(
                             response.investigation.into_option().ok_or_else(|| {
                                 anyhow::anyhow!("server returned no investigation")

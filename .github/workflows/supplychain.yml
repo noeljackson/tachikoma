@@ -13,6 +13,6 @@ permissions:
 
 jobs:
   source:
-    uses: noeljackson/supplychain/.github/workflows/scan.yml@dd34170a75a80d9b3484e39df0ac2a5ebf6682dc
+    uses: noeljackson/supplychain/.github/workflows/scan.yml@97df5883cf9a3de3d2c81693374f958badc02fc3
     with:
       policy: strict

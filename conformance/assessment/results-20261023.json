@@ -1,0 +1,677 @@
+{
+  "date": "2026-10-23",
+  "model": [
+    "jev-1.13.0"
+  ],
+  "profile_sha256": "9e85c5955b5c9ba79a13abb806423072cfa7bef898524bc4233e983504ee225b",
+  "dataset_sha256": "94c26f334b62a38b389db8228835bc1a695bbd860af9d5fdb7474f14ec1e3800",
+  "method": {
+    "baseline": "Previous deployed seven-field input, instructions and label descriptions.",
+    "context": "Enriched input plus revised category rubric; no reference examples or atomic stage.",
+    "staged": "Enriched input, revised rubric, eight reference examples, activity/origin stage then overall category.",
+    "limits": "24 authored synthetic regression scenarios, not independent real-world security accuracy. No executable malware run. Historical sample is unlabeled. Unknown is an abstention, not a dangerous allow. No authorization thresholds were changed."
+  },
+  "synthetic": {
+    "baseline": {
+      "available": 24,
+      "cases": 24,
+      "correct": 10,
+      "high_confidence_wrong_at_0_9": 3,
+      "labeled_available": 24,
+      "mean_confidence": 0.735,
+      "mean_latency_ms": 194.79166666666666,
+      "suspicious_cases": 5,
+      "suspicious_detected": 0,
+      "unknown": 21,
+      "local_test_cases": 5,
+      "local_tests_classified_as_development": 3,
+      "suspicious_classified_as_benign": 0
+    },
+    "context": {
+      "available": 24,
+      "cases": 24,
+      "correct": 16,
+      "high_confidence_wrong_at_0_9": 0,
+      "labeled_available": 24,
+      "mean_confidence": 0.7104166666666667,
+      "mean_latency_ms": 178.95833333333334,
+      "suspicious_cases": 5,
+      "suspicious_detected": 5,
+      "unknown": 12,
+      "local_test_cases": 5,
+      "local_tests_classified_as_development": 0,
+      "suspicious_classified_as_benign": 0
+    },
+    "staged": {
+      "available": 24,
+      "cases": 24,
+      "correct": 23,
+      "high_confidence_wrong_at_0_9": 0,
+      "labeled_available": 24,
+      "mean_confidence": 0.8870833333333331,
+      "mean_latency_ms": 408.8333333333333,
+      "suspicious_cases": 5,
+      "suspicious_detected": 4,
+      "unknown": 8,
+      "local_test_cases": 5,
+      "local_tests_classified_as_development": 5,
+      "suspicious_classified_as_benign": 0
+    }
+  },
+  "unlabeled_history": {
+    "baseline": {
+      "available": 16,
+      "cases": 16,
+      "correct": 0,
+      "high_confidence_wrong_at_0_9": 0,
+      "labeled_available": 0,
+      "mean_confidence": 0.7931250000000002,
+      "mean_latency_ms": 184.625,
+      "suspicious_cases": 0,
+      "suspicious_detected": 0,
+      "unknown": 16
+    },
+    "context": {
+      "available": 16,
+      "cases": 16,
+      "correct": 0,
+      "high_confidence_wrong_at_0_9": 0,
+      "labeled_available": 0,
+      "mean_confidence": 0.7681250000000001,
+      "mean_latency_ms": 213.125,
+      "suspicious_cases": 0,
+      "suspicious_detected": 0,
+      "unknown": 16
+    },
+    "staged": {
+      "available": 16,
+      "cases": 16,
+      "correct": 0,
+      "high_confidence_wrong_at_0_9": 0,
+      "labeled_available": 0,
+      "mean_confidence": 0.831875,
+      "mean_latency_ms": 392.625,
+      "suspicious_cases": 0,
+      "suspicious_detected": 0,
+      "unknown": 16
+    }
+  },
+  "cases": [
+    {
+      "id": "cargo-rebuilt-test",
+      "variant": "baseline",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.52,
+      "latency_ms": 201
+    },
+    {
+      "id": "cargo-rebuilt-test",
+      "variant": "context",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.62,
+      "latency_ms": 227
+    },
+    {
+      "id": "cargo-rebuilt-test",
+      "variant": "staged",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.91,
+      "latency_ms": 457
+    },
+    {
+      "id": "rust-ipv6-test",
+      "variant": "baseline",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.46,
+      "latency_ms": 147
+    },
+    {
+      "id": "rust-ipv6-test",
+      "variant": "context",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.45,
+      "latency_ms": 133
+    },
+    {
+      "id": "rust-ipv6-test",
+      "variant": "staged",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.96,
+      "latency_ms": 425
+    },
+    {
+      "id": "go-build-test",
+      "variant": "baseline",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.62,
+      "latency_ms": 138
+    },
+    {
+      "id": "go-build-test",
+      "variant": "context",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.5,
+      "latency_ms": 146
+    },
+    {
+      "id": "go-build-test",
+      "variant": "staged",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.92,
+      "latency_ms": 493
+    },
+    {
+      "id": "python-pytest-local",
+      "variant": "baseline",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.91,
+      "latency_ms": 196
+    },
+    {
+      "id": "python-pytest-local",
+      "variant": "context",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.56,
+      "latency_ms": 224
+    },
+    {
+      "id": "python-pytest-local",
+      "variant": "staged",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.91,
+      "latency_ms": 373
+    },
+    {
+      "id": "node-test-local",
+      "variant": "baseline",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.87,
+      "latency_ms": 175
+    },
+    {
+      "id": "node-test-local",
+      "variant": "context",
+      "expected": "development",
+      "category": "unknown",
+      "confidence": 0.73,
+      "latency_ms": 199
+    },
+    {
+      "id": "node-test-local",
+      "variant": "staged",
+      "expected": "development",
+      "category": "development",
+      "confidence": 0.82,
+      "latency_ms": 402
+    },
+    {
+      "id": "npm-cli-fetch",
+      "variant": "baseline",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.57,
+      "latency_ms": 213
+    },
+    {
+      "id": "npm-cli-fetch",
+      "variant": "context",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.5,
+      "latency_ms": 156
+    },
+    {
+      "id": "npm-cli-fetch",
+      "variant": "staged",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.97,
+      "latency_ms": 463
+    },
+    {
+      "id": "cargo-crate-download",
+      "variant": "baseline",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.6,
+      "latency_ms": 133
+    },
+    {
+      "id": "cargo-crate-download",
+      "variant": "context",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.59,
+      "latency_ms": 224
+    },
+    {
+      "id": "cargo-crate-download",
+      "variant": "staged",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.95,
+      "latency_ms": 453
+    },
+    {
+      "id": "go-proxy-download",
+      "variant": "baseline",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.75,
+      "latency_ms": 167
+    },
+    {
+      "id": "go-proxy-download",
+      "variant": "context",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.42,
+      "latency_ms": 221
+    },
+    {
+      "id": "go-proxy-download",
+      "variant": "staged",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.68,
+      "latency_ms": 347
+    },
+    {
+      "id": "browser-site",
+      "variant": "baseline",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.76,
+      "latency_ms": 194
+    },
+    {
+      "id": "browser-site",
+      "variant": "context",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.75,
+      "latency_ms": 216
+    },
+    {
+      "id": "browser-site",
+      "variant": "staged",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.95,
+      "latency_ms": 470
+    },
+    {
+      "id": "independent-truffle-scan",
+      "variant": "baseline",
+      "expected": "expected",
+      "category": "unknown",
+      "confidence": 0.91,
+      "latency_ms": 153
+    },
+    {
+      "id": "independent-truffle-scan",
+      "variant": "context",
+      "expected": "expected",
+      "category": "suspicious",
+      "confidence": 0.6,
+      "latency_ms": 146
+    },
+    {
+      "id": "independent-truffle-scan",
+      "variant": "staged",
+      "expected": "expected",
+      "category": "expected",
+      "confidence": 0.85,
+      "latency_ms": 367
+    },
+    {
+      "id": "crashpad-report",
+      "variant": "baseline",
+      "expected": "telemetry",
+      "category": "unknown",
+      "confidence": 0.35,
+      "latency_ms": 141
+    },
+    {
+      "id": "crashpad-report",
+      "variant": "context",
+      "expected": "telemetry",
+      "category": "telemetry",
+      "confidence": 0.81,
+      "latency_ms": 210
+    },
+    {
+      "id": "crashpad-report",
+      "variant": "staged",
+      "expected": "telemetry",
+      "category": "telemetry",
+      "confidence": 0.97,
+      "latency_ms": 547
+    },
+    {
+      "id": "desktop-crash-report",
+      "variant": "baseline",
+      "expected": "telemetry",
+      "category": "unknown",
+      "confidence": 0.52,
+      "latency_ms": 205
+    },
+    {
+      "id": "desktop-crash-report",
+      "variant": "context",
+      "expected": "telemetry",
+      "category": "telemetry",
+      "confidence": 0.51,
+      "latency_ms": 254
+    },
+    {
+      "id": "desktop-crash-report",
+      "variant": "staged",
+      "expected": "telemetry",
+      "category": "telemetry",
+      "confidence": 0.92,
+      "latency_ms": 412
+    },
+    {
+      "id": "install-truffle-legitimate-api",
+      "variant": "baseline",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.68,
+      "latency_ms": 242
+    },
+    {
+      "id": "install-truffle-legitimate-api",
+      "variant": "context",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 1.0,
+      "latency_ms": 133
+    },
+    {
+      "id": "install-truffle-legitimate-api",
+      "variant": "staged",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 1.0,
+      "latency_ms": 353
+    },
+    {
+      "id": "install-scanner-provider",
+      "variant": "baseline",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.92,
+      "latency_ms": 250
+    },
+    {
+      "id": "install-scanner-provider",
+      "variant": "context",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 1.0,
+      "latency_ms": 145
+    },
+    {
+      "id": "install-scanner-provider",
+      "variant": "staged",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 1.0,
+      "latency_ms": 466
+    },
+    {
+      "id": "install-inline-public-callback",
+      "variant": "baseline",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.89,
+      "latency_ms": 262
+    },
+    {
+      "id": "install-inline-public-callback",
+      "variant": "context",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 0.54,
+      "latency_ms": 137
+    },
+    {
+      "id": "install-inline-public-callback",
+      "variant": "staged",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.45,
+      "latency_ms": 329
+    },
+    {
+      "id": "install-bun-api-chain",
+      "variant": "baseline",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.82,
+      "latency_ms": 149
+    },
+    {
+      "id": "install-bun-api-chain",
+      "variant": "context",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 0.82,
+      "latency_ms": 159
+    },
+    {
+      "id": "install-bun-api-chain",
+      "variant": "staged",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 0.75,
+      "latency_ms": 418
+    },
+    {
+      "id": "install-scanner-even-loopback",
+      "variant": "baseline",
+      "expected": "suspicious",
+      "category": "unknown",
+      "confidence": 0.84,
+      "latency_ms": 207
+    },
+    {
+      "id": "install-scanner-even-loopback",
+      "variant": "context",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 0.87,
+      "latency_ms": 138
+    },
+    {
+      "id": "install-scanner-even-loopback",
+      "variant": "staged",
+      "expected": "suspicious",
+      "category": "suspicious",
+      "confidence": 0.86,
+      "latency_ms": 332
+    },
+    {
+      "id": "unattributed-node-github",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.85,
+      "latency_ms": 259
+    },
+    {
+      "id": "unattributed-node-github",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.74,
+      "latency_ms": 153
+    },
+    {
+      "id": "unattributed-node-github",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.94,
+      "latency_ms": 443
+    },
+    {
+      "id": "loopback-vault-not-test",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.86,
+      "latency_ms": 266
+    },
+    {
+      "id": "loopback-vault-not-test",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 1.0,
+      "latency_ms": 155
+    },
+    {
+      "id": "loopback-vault-not-test",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 1.0,
+      "latency_ms": 439
+    },
+    {
+      "id": "test-directory-public",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.59,
+      "latency_ms": 247
+    },
+    {
+      "id": "test-directory-public",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.82,
+      "latency_ms": 211
+    },
+    {
+      "id": "test-directory-public",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.99,
+      "latency_ms": 397
+    },
+    {
+      "id": "new-host-not-malware-proof",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.84,
+      "latency_ms": 140
+    },
+    {
+      "id": "new-host-not-malware-proof",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.99,
+      "latency_ms": 152
+    },
+    {
+      "id": "new-host-not-malware-proof",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 1.0,
+      "latency_ms": 283
+    },
+    {
+      "id": "unattributed-loopback-node",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.84,
+      "latency_ms": 146
+    },
+    {
+      "id": "unattributed-loopback-node",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.99,
+      "latency_ms": 288
+    },
+    {
+      "id": "unattributed-loopback-node",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 1.0,
+      "latency_ms": 323
+    },
+    {
+      "id": "instruction-in-path",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.75,
+      "latency_ms": 224
+    },
+    {
+      "id": "instruction-in-path",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.89,
+      "latency_ms": 131
+    },
+    {
+      "id": "instruction-in-path",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.99,
+      "latency_ms": 445
+    },
+    {
+      "id": "scanner-without-ancestry",
+      "variant": "baseline",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.92,
+      "latency_ms": 220
+    },
+    {
+      "id": "scanner-without-ancestry",
+      "variant": "context",
+      "expected": "unknown",
+      "category": "suspicious",
+      "confidence": 0.35,
+      "latency_ms": 137
+    },
+    {
+      "id": "scanner-without-ancestry",
+      "variant": "staged",
+      "expected": "unknown",
+      "category": "unknown",
+      "confidence": 0.5,
+      "latency_ms": 375
+    }
+  ]
+}

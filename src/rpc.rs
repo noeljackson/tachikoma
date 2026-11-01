@@ -212,16 +212,39 @@ impl ProposalService for ProposalApi {
     fn list_proposals<'a>(
         &'a self,
         _ctx: RequestContext,
-        _request: ServiceRequest<'_, ListProposalsRequest>,
+        request: ServiceRequest<'_, ListProposalsRequest>,
     ) -> impl std::future::Future<
         Output = ServiceResult<impl connectrpc::Encodable<ListProposalsResponse> + Send + use<'a>>,
     > + Send {
+        let request = request.to_owned_message();
         async move {
             let store = self
                 .store
                 .lock()
                 .map_err(|_| internal("proposal store lock poisoned"))?;
-            let records = store.list(None).map_err(internal)?;
+            let state = request.state.as_known().ok_or_else(|| {
+                ConnectError::new(ErrorCode::InvalidArgument, "unknown proposal state")
+            })?;
+            let state = match state {
+                ProposalState::Unspecified => None,
+                ProposalState::Observed => Some("observed"),
+                ProposalState::Proposed => Some("proposed"),
+                ProposalState::Validated => Some("validated"),
+                ProposalState::AwaitingReview => Some("awaiting_review"),
+                ProposalState::Approved => Some("approved"),
+                ProposalState::Rejected => Some("rejected"),
+                ProposalState::Expired => Some("expired"),
+                ProposalState::Queued => Some("queued"),
+                ProposalState::Executing => Some("executing"),
+                ProposalState::Applied => Some("applied"),
+                ProposalState::Failed => Some("failed"),
+            };
+            let records = store
+                .list_for_adapter(
+                    state,
+                    (!request.adapter.is_empty()).then_some(request.adapter.as_str()),
+                )
+                .map_err(internal)?;
             let proposals = records
                 .into_iter()
                 .map(|record| {

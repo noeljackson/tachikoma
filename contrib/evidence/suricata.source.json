@@ -1,0 +1,61 @@
+{
+  "id": "network.suricata",
+  "title": "Suricata network alerts",
+  "adapter": "suricata",
+  "enabled": true,
+  "queues": [
+    "network.egress"
+  ],
+  "max_age_ms": 30000,
+  "coverage": "Passive alerts on the captured interface. Encrypted payloads, uncaptured interfaces and flows not yet started may be unavailable.",
+  "capabilities": {
+    "network.alert": {
+      "type": "object",
+      "fields": {
+        "source_ip": {
+          "type": "string",
+          "max_len": 64
+        },
+        "source_port": {
+          "type": "integer",
+          "min": 0,
+          "max": 65535
+        },
+        "destination_ip": {
+          "type": "string",
+          "max_len": 64
+        },
+        "destination_port": {
+          "type": "integer",
+          "min": 0,
+          "max": 65535
+        },
+        "protocol": {
+          "type": "string",
+          "max_len": 16
+        },
+        "signature_id": {
+          "type": "integer",
+          "min": 0,
+          "max": 4294967295
+        },
+        "severity": {
+          "type": "integer",
+          "min": 0,
+          "max": 255
+        },
+        "flow_id": {
+          "type": "string",
+          "max_len": 64
+        }
+      },
+      "required": [
+        "source_ip",
+        "destination_ip",
+        "protocol",
+        "signature_id",
+        "severity"
+      ]
+    }
+  }
+}
