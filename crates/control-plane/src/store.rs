@@ -786,16 +786,33 @@ impl Store {
         Ok(review)
     }
     pub fn list(&mut self, actor: &Principal, before: i64, state: &str) -> Result<Reviews> {
+        self.list_filtered(actor, before, state, 16, "", None)
+    }
+    pub fn list_filtered(
+        &mut self,
+        actor: &Principal,
+        before: i64,
+        state: &str,
+        limit: usize,
+        search: &str,
+        queues: Option<&[String]>,
+    ) -> Result<Reviews> {
         if actor.spec.role == Role::Source {
             return Err(Fault::forbidden());
         }
-        self.expire(now_ms())?;
-        if !["pending", "history", "all"].contains(&state) {
+        if !["pending", "history", "all"].contains(&state)
+            || !(1..=2048).contains(&limit)
+            || search.len() > 256
+            || queues.is_some_and(|q| q.len() > 64 || q.iter().any(|id| !identifier(id)))
+        {
             return Err(Fault::bad());
         }
-        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) ORDER BY seq DESC LIMIT 16")?.query_map(params![before,state,actor.admin() || (matches!(actor.spec.id.as_str(), "local-web" | "local-desktop") && actor.spec.role == Role::Reviewer),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""}], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
-        let next_before = (rows.len() == 16).then(|| rows.last().unwrap().0);
-        let mut reviews = vec![];
+        self.expire(now_ms())?;
+        let rows = self.db.prepare("SELECT seq,body FROM requests WHERE seq<?1 AND (?2='all' OR (?2='pending' AND state='pending') OR (?2='history' AND state!='pending')) AND (?3 OR (queue IN (SELECT value FROM json_each(?4)) AND (?5='' OR producer=?5))) AND (?6 OR queue IN (SELECT value FROM json_each(?7))) AND (?8='' OR instr(lower(json_extract(body,'$.request.summary') || ' ' || queue || ' ' || json_extract(body,'$.request.subject') || ' ' || id), lower(?8))>0) ORDER BY seq DESC LIMIT ?9")?
+            .query_map(params![before,state,actor.admin() || (matches!(actor.spec.id.as_str(), "local-web" | "local-desktop") && actor.spec.role == Role::Reviewer),json(&actor.spec.queues)?,if actor.spec.role==Role::Producer {actor.spec.id.as_str()}else{""},queues.is_none(),json(&queues.unwrap_or_default())?,search,limit as i64], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?)))?
+            .collect::<std::result::Result<Vec<_>,_>>()?;
+        let next_before = (rows.len() == limit).then(|| rows.last().unwrap().0);
+        let mut reviews = Vec::with_capacity(rows.len());
         for (_, body) in rows {
             let review: Review = decode(&body)?;
             if actor.read(&review) {
@@ -805,6 +822,27 @@ impl Store {
         Ok(Reviews {
             reviews,
             next_before,
+        })
+    }
+    /// API calls serialize access to this store: snapshot and cursor share one boundary.
+    pub fn inbox(&mut self, actor: &Principal) -> Result<Inbox> {
+        actor.require(Role::Reviewer)?;
+        self.expire(now_ms())?;
+        let pending = self
+            .list_filtered(actor, i64::MAX, "pending", 2048, "", None)?
+            .reviews;
+        let history = self.list_filtered(actor, i64::MAX, "history", 100, "", None)?;
+        let queues = self.queues(actor)?;
+        let cursor = self
+            .db
+            .query_row("SELECT coalesce(max(seq),0) FROM events", [], |row| {
+                row.get(0)
+            })?;
+        Ok(Inbox {
+            cursor,
+            queues,
+            pending,
+            history,
         })
     }
     fn commit_decision(
@@ -1735,6 +1773,57 @@ mod tests {
             action: "allow-once".into(),
         });
         assert!(store.put_queue(&admin(), queue).is_err());
+    }
+    #[test]
+    fn inbox_bounds_history_and_filters_search_without_losing_pending_or_authorization() {
+        let (mut store, producer) = fixture();
+        let review = store.submit(&producer, submission()).unwrap();
+        for index in 0..1200 {
+            let mut old = review.clone();
+            old.id = format!("archive-{index}");
+            old.state = ReviewState::Expired;
+            old.request.summary = if index == 2 {
+                "old searchable marker".into()
+            } else {
+                "older review".into()
+            };
+            old.request.idempotency_key = old.id.clone();
+            store.db.execute("INSERT INTO requests(id,producer,queue,idempotency,fingerprint,state,expires,body) VALUES(?1,?2,?3,?1,'fixture','expired',0,?4)",params![old.id,old.producer,old.request.queue,json(&old).unwrap()]).unwrap();
+        }
+        let inbox = store.inbox(&admin()).unwrap();
+        assert_eq!(inbox.history.reviews.len(), 100);
+        assert_eq!(inbox.pending.len(), 1);
+        assert!(inbox.history.next_before.is_some());
+        let found = store
+            .list_filtered(
+                &admin(),
+                i64::MAX,
+                "history",
+                100,
+                "searchable marker",
+                None,
+            )
+            .unwrap();
+        assert_eq!(found.reviews.len(), 1);
+        assert!(
+            store
+                .list_filtered(&admin(), i64::MAX, "history", 100, "", Some(&[]))
+                .unwrap()
+                .reviews
+                .is_empty()
+        );
+        assert!(store.inbox(&producer).is_err());
+        let mut decision = decide();
+        decision.action_id = "deny-once".into();
+        store.decide(&admin(), &review.id, decision).unwrap();
+        assert!(
+            store
+                .events(&admin(), inbox.cursor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.request_id == review.id)
+        );
     }
     #[test]
     fn idempotency_is_scoped_and_payload_changes_conflict() {

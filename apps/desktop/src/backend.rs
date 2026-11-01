@@ -1,61 +1,204 @@
-use crate::state::{Snapshot, now_ms};
+use crate::feed::{self, Shared};
+use crate::state::{Detail, Page, Snapshot, now_ms};
 use anyhow::{Context, Result, ensure};
 use approval_client::Client;
 use approval_protocol::*;
-use std::{path::PathBuf, time::Duration};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{Arc, Mutex, atomic::Ordering},
+    time::{Duration, Instant},
+};
+#[derive(Default)]
+struct Details {
+    epoch: i64,
+    at: Option<Instant>,
+    preview: Option<PolicyPreview>,
+    conversation: Option<Conversation>,
+    review: Option<Review>,
+}
 
 #[derive(Clone)]
 pub struct Backend {
     pub socket: PathBuf,
     pub credential: PathBuf,
     pub demo: bool,
+    pub(crate) shared: Arc<Shared>,
+    details: Arc<Mutex<BTreeMap<(String, u8), Details>>>,
 }
 impl Backend {
+    pub fn new(socket: PathBuf, credential: PathBuf, demo: bool) -> Self {
+        Self {
+            socket,
+            credential,
+            demo,
+            shared: Arc::new(Shared::default()),
+            details: Arc::new(Mutex::new(BTreeMap::new())),
+        }
+    }
+    pub fn start(&self) {
+        if !self.demo && !self.shared.started.swap(true, Ordering::AcqRel) {
+            tokio::spawn(feed::run(self.clone()));
+        }
+    }
+    pub fn query(&self, search: String, queues: Option<Vec<String>>) {
+        let mut bytes = 0;
+        let search = search
+            .chars()
+            .take_while(|ch| {
+                bytes += ch.len_utf8();
+                bytes <= 256
+            })
+            .collect();
+        let next = feed::Query { search, queues };
+        self.shared.query.send_if_modified(|old| {
+            if *old == next {
+                false
+            } else {
+                *old = next;
+                true
+            }
+        });
+    }
+    pub fn more(&self) {
+        self.shared.more();
+    }
+    pub async fn live(&self) -> Result<Arc<feed::Data>> {
+        self.start();
+        let mut changes = self.shared.updates.subscribe();
+        tokio::time::timeout(Duration::from_secs(6), async {
+            loop {
+                let data = changes.borrow_and_update().clone();
+                if data.connected {
+                    return Ok(data);
+                }
+                if !data.queues.is_empty() {
+                    anyhow::bail!("approval feed disconnected");
+                }
+                changes.changed().await?;
+            }
+        })
+        .await
+        .context("approval feed unavailable")?
+    }
+
     pub(crate) fn client(&self) -> Result<Client> {
-        Client::from_credential_file(
+        let mut saved = self.shared.client.lock().expect("client cache");
+        if let Some(client) = saved.as_ref() {
+            return Ok(client.clone());
+        }
+        let client = Client::from_credential_file(
             "http://tachikoma.local",
             Some(&self.socket),
             &self.credential,
-        )
+        )?;
+        *saved = Some(client.clone());
+        Ok(client)
     }
+    #[cfg(test)]
     pub async fn snapshot(&self, selected: Option<&str>) -> Result<Snapshot> {
+        self.snapshot_context(selected, Page::Decisions, Detail::Overview)
+            .await
+    }
+    pub async fn snapshot_context(
+        &self,
+        selected: Option<&str>,
+        page: Page,
+        detail: Detail,
+    ) -> Result<Snapshot> {
         if self.demo {
             return Ok(demo_snapshot());
         }
-        let client = self.client()?;
-        tokio::time::timeout(Duration::from_secs(6), async {
-            let (queues, pending, history, health) = tokio::try_join!(
-                client.queues(),
-                client.list(),
-                client.list_state("history"),
-                client.health()
-            )?;
-            let mut snapshot = Snapshot {
-                queues,
-                pending,
-                history,
-                health: Some(health),
-                ..Default::default()
-            };
-            match client.sources().await {
-                Ok(sources) => snapshot.sources = sources,
-                Err(_) => snapshot.detail_error = "Evidence source status unavailable.".into(),
-            }
-            if let Some(id) = selected {
-                snapshot.selected = client.get(id).await.ok();
-                let (preview, conversation) =
-                    tokio::join!(client.policy_preview(id), client.conversation(id));
-                snapshot.preview = preview.ok();
-                snapshot.conversation = conversation.ok();
-                if snapshot.selected.is_none() {
-                    snapshot.detail_error =
-                        "Selected request unavailable. Refresh before deciding.".into();
+        let data = self.live().await?;
+        let mut snapshot = Snapshot {
+            queues: data.queues.clone(),
+            pending: data.pending.clone(),
+            history: data.history.clone(),
+            health: data.health.clone(),
+            sources: data.sources.clone(),
+            history_more: data.next_before.is_some() && data.history.len() < feed::HISTORY_LIMIT,
+            ..Default::default()
+        };
+        if let Some(id) = selected {
+            let epoch = data.epochs.get(id).copied().unwrap_or(0);
+            let kind = if page == Page::Settings {
+                0
+            } else {
+                match detail {
+                    Detail::Policy => 1,
+                    Detail::Investigation => 2,
+                    _ => 0,
                 }
+            };
+            let key = (id.to_owned(), kind);
+            let cached = self
+                .details
+                .lock()
+                .expect("detail cache")
+                .get(&key)
+                .filter(|d| {
+                    d.epoch == epoch && d.at.is_some_and(|t| t.elapsed() < Duration::from_secs(5))
+                })
+                .map(|d| (d.review.clone(), d.preview.clone(), d.conversation.clone()));
+            let record = data
+                .pending
+                .iter()
+                .chain(&data.history)
+                .find(|r| r.id == id)
+                .cloned();
+            let (review, preview, conversation) = if let Some(cached) = cached {
+                cached
+            } else {
+                let client = self.client()?;
+                let review = if record.is_some() {
+                    record.clone()
+                } else {
+                    tokio::time::timeout(Duration::from_secs(2), client.get(id))
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                };
+                let preview = if kind == 1 {
+                    tokio::time::timeout(Duration::from_secs(2), client.policy_preview(id))
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                } else {
+                    None
+                };
+                let conversation = if kind == 2 {
+                    tokio::time::timeout(Duration::from_secs(2), client.conversation(id))
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                } else {
+                    None
+                };
+                let mut cache = self.details.lock().expect("detail cache");
+                cache.insert(
+                    key,
+                    Details {
+                        epoch,
+                        at: Some(Instant::now()),
+                        review: review.clone(),
+                        preview: preview.clone(),
+                        conversation: conversation.clone(),
+                    },
+                );
+                while cache.len() > 64 {
+                    cache.pop_first();
+                }
+                (review, preview, conversation)
+            };
+            snapshot.selected = record.or(review);
+            snapshot.preview = preview;
+            snapshot.conversation = conversation;
+            if snapshot.selected.is_none() {
+                snapshot.detail_error =
+                    "Selected request unavailable. Refresh before deciding.".into();
             }
-            Ok(snapshot)
-        })
-        .await
-        .context("approval API timed out")?
+        }
+        Ok(snapshot)
     }
     pub async fn decide(&self, review: &Review, action: &ReviewAction) -> Result<()> {
         ensure!(!self.demo, "demo is read-only");

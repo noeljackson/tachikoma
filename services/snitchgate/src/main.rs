@@ -52,6 +52,15 @@ enum Commands {
     },
     /// Explore the TUI with in-memory fixtures, without network or firewall access.
     Demo,
+    /// Print a page of sanitized daemon connection observations as JSON.
+    Activity {
+        #[arg(long)]
+        socket: Option<PathBuf>,
+        #[arg(long)]
+        before: Option<i64>,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Print a service snapshot as JSON.
     Status {
         #[arg(long)]
@@ -116,6 +125,7 @@ async fn serve(
         Store::open(&db, config.history_limit)?,
         false,
     )?;
+    broker.activity_start(state.join("activity.sqlite3"));
     let grpc_path = runtime.join("opensnitch.sock");
     let control_path = runtime.join("control.sock");
     let grpc = ipc::bind(&grpc_path)?;
@@ -201,6 +211,22 @@ async fn main() -> Result<()> {
             let result = tui::run(tui::Source::Demo(broker.clone())).await;
             broker.shutdown();
             result
+        }
+        Commands::Activity {
+            socket,
+            before,
+            limit,
+        } => {
+            let response = ipc::request(
+                &control_socket(socket)?,
+                Command::Activity { before, limit },
+            )
+            .await?;
+            if let Some(error) = response.error {
+                anyhow::bail!(error);
+            }
+            println!("{}", serde_json::to_string_pretty(&response.activity)?);
+            Ok(())
         }
         Commands::Status { socket } => {
             let response = ipc::request(&control_socket(socket)?, Command::Snapshot).await?;

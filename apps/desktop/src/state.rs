@@ -37,6 +37,7 @@ pub struct Snapshot {
     pub preview: Option<PolicyPreview>,
     pub conversation: Option<Conversation>,
     pub detail_error: String,
+    pub history_more: bool,
 }
 pub struct State {
     pub snapshot: Snapshot,
@@ -50,6 +51,7 @@ pub struct State {
     pub connected: bool,
     pub busy: bool,
     pub refreshing: bool,
+    pub refresh_again: bool,
     pub notice: String,
     pub confirmation: Option<Confirmation>,
 }
@@ -67,6 +69,7 @@ impl Default for State {
             connected: false,
             busy: false,
             refreshing: false,
+            refresh_again: false,
             notice: "Connecting to the local approval service…".into(),
             confirmation: None,
         }

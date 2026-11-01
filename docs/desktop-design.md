@@ -82,3 +82,26 @@ scope menu sits below its button and the dialog centers in the window, and
 saves light/dark PNGs under `/out/desktop-layout`. The native keyboard contract
 uses a real approval core on private Docker sockets to check exact action scopes,
 Enter/Escape, held Return, focus isolation, expiry and competing decisions.
+
+## Incremental data and performance
+
+The window and desktop notifications share one authenticated background feed.
+`/inbox` provides all pending reviews, the newest 100 history entries and an
+event cursor under the serialized store lock. Long polling fetches changed
+reviews, including assessment/receipt/chat events that do not change the consent
+revision. Reconnect resynchronizes pending state before declaring the feed ready.
+
+Older history pages load at the end of the virtualized list or with Load older
+decisions. At most 5,000 history records remain in this view; server-side search
+can find older results. Search is coalesced for 150 ms, and queue all/none filters
+remain explicit. The API retains authentication and queue ownership filtering.
+The list constructs only viewport rows; local one-second timers update expiry
+text without downloading data. Policy and conversation reads occur only for the
+active inspector tab, with event invalidation and a five-second freshness cap.
+A reusable HTTP client replaces repeated credential reads/client construction.
+
+The Docker performance contract seeds 10,000 historical reviews and checks a
+100-record initial history, complete pending state, no idle history rereads, no
+unopened inspector calls, and search dispatch latency. Software-GPU tests also
+load 10,001 rows and assert that offscreen row elements are absent while logging
+layout time. No live approval socket or credential is used by these fixtures.

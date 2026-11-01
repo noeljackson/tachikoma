@@ -26,6 +26,8 @@ Read `docs/desktop-design.md` before changing layout or components.
   with focused Return/Escape handling and no background keyboard navigation.
   Opening a modal with a held Return must never also confirm it. Cancel stale
   bindings and keep the next default narrow after cancelling or deciding.
+- Use the shared change feed and virtualized list. Never poll or render full
+  history on each frame; keep inspector reads scoped to the active tab.
 - Resolve duplicate request snapshots by revision before filtering states. A
   settled request must not reappear as actionable pending data.
 - Run runtime tests in Docker, never against live sockets or credentials. Native

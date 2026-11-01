@@ -43,6 +43,12 @@ Defaults:
 - TUI/control socket: `$XDG_RUNTIME_DIR/snitchgate/control.sock`
 - SQLite history: `${XDG_STATE_HOME:-$HOME/.local/state}/snitchgate/history.sqlite3`
 
+Daemon-reported connection observations are recorded separately in private,
+bounded `activity.sqlite3`. `snitchgate activity` reads a page through the control
+socket. The original OpenSnitch GUI database is preserved. See
+[connection activity and coverage](../../docs/connection-activity.md) for retained
+fields, limits and recording counters.
+
 In other terminals:
 
 ```sh

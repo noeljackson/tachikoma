@@ -133,7 +133,7 @@ pub struct Desktop {
     queues_open: bool,
     queue_cursor: usize,
     detail_scroll: gpui::ScrollHandle,
-    request_scroll: gpui::ScrollHandle,
+    request_scroll: gpui::UniformListScrollHandle,
     queue_scroll: gpui::ScrollHandle,
     filter: Entity<EditableTextState>,
     draft: Entity<EditableTextState>,
@@ -162,8 +162,10 @@ impl Desktop {
         let filter = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
         let draft = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
         let model = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-        let mut subscriptions =
-            vec![cx.subscribe(&filter, |_, _, _: &TextChanged, cx| cx.notify())];
+        let mut subscriptions = vec![cx.subscribe(&filter, |this, _, _: &TextChanged, cx| {
+            this.refresh(cx);
+            cx.notify();
+        })];
         let appearance = appearance_override
             .unwrap_or_else(|| Appearance::load(&preferences_path).unwrap_or_default());
         let ui = Ui::new(appearance.resolve(window.appearance()));
@@ -175,12 +177,28 @@ impl Desktop {
         }));
         let navigation_focus = cx.focus_handle();
         window.focus(&navigation_focus, cx);
+        let mut updates = backend.shared.updates.subscribe();
         cx.spawn(async move |this, cx| {
+            let _ = this.update(cx, |this, cx| this.refresh(cx));
             loop {
-                if this.update(cx, |this, cx| this.refresh(cx)).is_err() {
-                    break;
+                let timer = cx.background_executor().timer(Duration::from_secs(1));
+                let changed = updates.changed();
+                futures_util::pin_mut!(timer, changed);
+                match futures_util::future::select(changed, timer).await {
+                    futures_util::future::Either::Left((result, _)) => {
+                        if result.is_err() {
+                            break;
+                        }
+                        if this.update(cx, |this, cx| this.refresh(cx)).is_err() {
+                            break;
+                        }
+                    }
+                    futures_util::future::Either::Right(_) => {
+                        if this.update(cx, |_, cx| cx.notify()).is_err() {
+                            break;
+                        }
+                    }
                 }
-                cx.background_executor().timer(Duration::from_secs(2)).await;
             }
         })
         .detach();
@@ -204,7 +222,7 @@ impl Desktop {
             queues_open: false,
             queue_cursor: 0,
             detail_scroll: gpui::ScrollHandle::new(),
-            request_scroll: gpui::ScrollHandle::new(),
+            request_scroll: gpui::UniformListScrollHandle::new(),
             queue_scroll: gpui::ScrollHandle::new(),
             filter,
             draft,
@@ -230,15 +248,27 @@ impl Desktop {
     }
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.state.refreshing {
+            self.state.refresh_again = true;
             return;
         }
         self.state.refreshing = true;
+        self.backend.query(
+            self.filter.read(cx).as_str().to_owned(),
+            self.state
+                .queue_filter
+                .as_ref()
+                .map(|q| q.iter().cloned().collect()),
+        );
         let selected = self.state.selected.clone();
+        let page = self.state.page;
+        let detail = self.state.detail;
         let target = selected.clone();
         let backend = self.backend.clone();
-        let task = self
-            .runtime
-            .spawn(async move { backend.snapshot(selected.as_deref()).await });
+        let task = self.runtime.spawn(async move {
+            backend
+                .snapshot_context(selected.as_deref(), page, detail)
+                .await
+        });
         cx.spawn(async move |this, cx| {
             let result = task.await;
             if this.update(cx, |this, cx| {
@@ -247,6 +277,7 @@ impl Desktop {
                     Ok(Ok(snapshot)) => { this.state.apply(snapshot, target.as_deref()); if this.backend.demo { this.state.notice = "Offline example · read only · no approval service connection".into(); } },
                     _ => { this.state.connected = false; this.state.notice = "Disconnected. Start the local approval service to review requests.".into(); }
                 }
+                if std::mem::take(&mut this.state.refresh_again) || this.state.selected!=target || this.state.page!=page || this.state.detail!=detail {this.refresh(cx);}
                 cx.notify();
             }).is_err() { eprintln!("Approval window closed during refresh"); }
         }).detach();
@@ -309,6 +340,7 @@ impl Desktop {
             }
         }
         self.state.pane = Pane::Requests;
+        self.refresh(cx);
         cx.notify();
     }
     fn navigate(&mut self, offset: isize, cx: &mut Context<Self>) {
@@ -347,7 +379,8 @@ impl Desktop {
                 let id = review.id.clone();
                 self.select(id, cx);
                 self.state.pane = Pane::Requests;
-                self.request_scroll.scroll_to_item(next);
+                self.request_scroll
+                    .scroll_to_item(next, gpui::ScrollStrategy::Center);
             }
         }
         if self.state.pane == Pane::Details {
@@ -1128,118 +1161,122 @@ impl Desktop {
                 ))
             })
     }
+    fn decision_row(&self, review: &Review, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let colors = self.ui.colors;
+        let metrics = self.ui.metrics;
+        let id = review.id.clone();
+        let selected = self.state.selected.as_ref() == Some(&id);
+        let name = if review.request.schema_id == "network.connect.v1" {
+            format!(
+                "{} → {}",
+                application_name(State::application(review)),
+                destination(review)
+            )
+        } else {
+            text(&review.request.summary)
+        };
+        let destination = self
+            .state
+            .snapshot
+            .queues
+            .iter()
+            .find(|queue| queue.manifest.id == review.request.queue)
+            .map(|queue| queue.manifest.title.clone())
+            .unwrap_or_else(|| review.request.queue.clone());
+        let color = match review.state {
+            ReviewState::Allowed => colors.positive,
+            ReviewState::Denied => colors.negative,
+            ReviewState::Pending => colors.warning,
+            _ => colors.muted,
+        };
+        let marker = match review.state {
+            ReviewState::Allowed => Icon::Check,
+            ReviewState::Denied => Icon::Close,
+            ReviewState::Pending => Icon::Clock,
+            _ => Icon::Help,
+        };
+        div()
+            .id(SharedString::from(format!("request-{id}")))
+            .debug_selector(|| format!("request-{id}"))
+            .w_full()
+            .min_w_0()
+            .px(px(metrics.space[2]))
+            .py(px(metrics.space[2]))
+            .h(px(metrics.request_row_height))
+            .cursor_pointer()
+            .bg(rgb(if selected {
+                colors.selected
+            } else {
+                colors.panel
+            }))
+            .border_b_1()
+            .border_color(rgb(colors.separator))
+            .hover_style(move |style| style.bg(rgb(colors.hover)))
+            .flex()
+            .items_center()
+            .gap(px(metrics.space[2]))
+            .child(
+                div()
+                    .w(px(18.))
+                    .flex_shrink_0()
+                    .text_size(px(metrics.title))
+                    .text_color(rgb(color))
+                    .child(marker.view(color, metrics.icon)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(metrics.space[0]))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .gap(px(metrics.space[1]))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(px(metrics.body))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child(name),
+                            )
+                            .child(
+                                self.ui
+                                    .caption(&relative_time(review.created_at_ms))
+                                    .debug_selector(|| format!("request-latest-{id}"))
+                                    .flex_shrink_0(),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(metrics.body))
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .child(destination),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(metrics.caption))
+                            .text_color(rgb(color))
+                            .child(status(review)),
+                    ),
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.select(id.clone(), cx);
+                this.state.pane = Pane::Requests;
+                window.focus(&this.navigation_focus, cx);
+            }))
+            .into_any_element()
+    }
     fn decision_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
         let metrics = self.ui.metrics;
         let rows = self.state.rows(self.filter.read(cx).as_str());
         let count = rows.len();
-        let mut elements = vec![];
-        for review in &rows {
-            let id = review.id.clone();
-            let selected = self.state.selected.as_ref() == Some(&id);
-            let name = if review.request.schema_id == "network.connect.v1" {
-                format!(
-                    "{} → {}",
-                    application_name(State::application(review)),
-                    destination(review)
-                )
-            } else {
-                text(&review.request.summary)
-            };
-            let destination = self
-                .state
-                .snapshot
-                .queues
-                .iter()
-                .find(|queue| queue.manifest.id == review.request.queue)
-                .map(|queue| queue.manifest.title.clone())
-                .unwrap_or_else(|| review.request.queue.clone());
-            let color = match review.state {
-                ReviewState::Allowed => colors.positive,
-                ReviewState::Denied => colors.negative,
-                ReviewState::Pending => colors.warning,
-                _ => colors.muted,
-            };
-            let marker = match review.state {
-                ReviewState::Allowed => Icon::Check,
-                ReviewState::Denied => Icon::Close,
-                ReviewState::Pending => Icon::Clock,
-                _ => Icon::Help,
-            };
-            elements.push(
-                div()
-                    .id(SharedString::from(format!("request-{id}")))
-                    .px(px(metrics.space[2]))
-                    .py(px(metrics.space[2]))
-                    .cursor_pointer()
-                    .bg(rgb(if selected {
-                        colors.selected
-                    } else {
-                        colors.panel
-                    }))
-                    .border_b_1()
-                    .border_color(rgb(colors.separator))
-                    .hover_style(move |style| style.bg(rgb(colors.hover)))
-                    .flex()
-                    .items_center()
-                    .gap(px(metrics.space[2]))
-                    .child(
-                        div()
-                            .w(px(18.))
-                            .flex_shrink_0()
-                            .text_size(px(metrics.title))
-                            .text_color(rgb(color))
-                            .child(marker.view(color, metrics.icon)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(px(metrics.space[0]))
-                            .child(
-                                div()
-                                    .flex()
-                                    .justify_between()
-                                    .gap(px(metrics.space[1]))
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .truncate()
-                                            .text_size(px(metrics.body))
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .child(name),
-                                    )
-                                    .child(
-                                        self.ui
-                                            .caption(&relative_time(review.created_at_ms))
-                                            .flex_shrink_0(),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(metrics.body))
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .child(destination),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(metrics.caption))
-                                    .text_color(rgb(color))
-                                    .child(status(review)),
-                            ),
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.select(id.clone(), cx);
-                        this.state.pane = Pane::Requests;
-                        window.focus(&this.navigation_focus, cx);
-                    }))
-                    .into_any_element(),
-            );
-        }
         div()
             .w(px(metrics.list_width))
             .flex_shrink_0()
@@ -1312,12 +1349,15 @@ impl Desktop {
             )
             .child(
                 div()
-                    .id("request-scroll")
-                    .track_scroll(&self.request_scroll)
+                    .id("request-scroll-container")
+                    .debug_selector(|| "request-scroll-container".into())
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .children(elements)
+                    .child(gpui::uniform_list("request-scroll",count,cx.processor(|this,range:std::ops::Range<usize>,_,cx| {
+                        let rows=this.state.rows(this.filter.read(cx).as_str());
+                        if range.end>=rows.len() && this.state.show_history && this.state.snapshot.history_more {this.backend.more();}
+                        rows.into_iter().skip(range.start).take(range.len()).map(|review|this.decision_row(review,cx)).collect::<Vec<_>>()
+                    })).track_scroll(&self.request_scroll).h_full().w_full().when(count==0,|list|list.h(px(0.))))
                     .when(count == 0, |element| {
                         element.child(
                             div()
@@ -1338,6 +1378,9 @@ impl Desktop {
                         )
                     }),
             )
+            .when(self.state.show_history && self.state.snapshot.history_more,|element|element.child(
+                self.ui.button("load-history","Load older decisions",colors.text)
+                    .on_click(cx.listener(|this,_,_,_|this.backend.more()))))
     }
     fn details(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.ui.colors;
@@ -1387,6 +1430,7 @@ impl Desktop {
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.state.detail = detail;
                             this.state.pane = Pane::Details;
+                            this.refresh(cx);
                             cx.notify();
                         }))
                         .into_any_element(),

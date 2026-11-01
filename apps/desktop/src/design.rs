@@ -174,6 +174,7 @@ pub struct Metrics {
     pub rule_dialog_width: f32,
     pub dialog_body_height: f32,
     pub list_width: f32,
+    pub request_row_height: f32,
     pub icon: f32,
 }
 pub const METRICS: Metrics = Metrics {
@@ -192,6 +193,7 @@ pub const METRICS: Metrics = Metrics {
     rule_dialog_width: 680.,
     dialog_body_height: 360.,
     list_width: 440.,
+    request_row_height: 88.,
     icon: 16.,
 };
 

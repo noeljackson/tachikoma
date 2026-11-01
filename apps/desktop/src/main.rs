@@ -1,6 +1,7 @@
 mod backend;
 mod components;
 mod design;
+mod feed;
 mod icons;
 mod notifications;
 mod permissions;
@@ -42,15 +43,13 @@ fn main() -> Result<()> {
     let runtime_directory = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| state.join("run"));
-    let backend = backend::Backend {
-        socket: args
-            .socket
+    let backend = backend::Backend::new(
+        args.socket
             .unwrap_or_else(|| runtime_directory.join("tachikoma/tachikoma.sock")),
-        credential: args
-            .credential
+        args.credential
             .unwrap_or_else(|| state.join("approval/desktop.token")),
-        demo: args.demo,
-    };
+        args.demo,
+    );
     let runtime = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -72,6 +71,10 @@ fn main() -> Result<()> {
         }
     };
     if !args.demo {
+        let live = backend.clone();
+        runtime.spawn(async move {
+            live.start();
+        });
         runtime.spawn(notifications::run(backend.clone(), sender.clone()));
     }
     gpui_platform::application()

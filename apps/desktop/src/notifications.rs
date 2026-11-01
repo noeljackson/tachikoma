@@ -294,7 +294,8 @@ async fn serve(backend: &Backend, sender: &mpsc::Sender<Open>) -> Result<()> {
                         // A unique-owner probe also detects shell restarts with no pending requests.
                         ensure!(zbus::fdo::DBusProxy::new(&bus).await?.get_name_owner("org.freedesktop.Notifications".try_into()?).await? == owner, "notification server changed");
                         proxy.get_capabilities().await?;
-                        let reviews = client.list().await?;
+                        let data = backend.live().await?;
+                        let reviews = data.pending.clone();
                         let live: HashMap<_, _> = reviews.into_iter().filter(|r| pending(r, now_ms())).map(|r| (r.id.clone(), r)).collect();
                         let stale: Vec<_> = prompts.iter().filter(|(id, p)| !live.get(*id).is_some_and(|r| same_binding(&p.review, r))).map(|(id, _)| id.clone()).collect();
                         for id in stale { if let Some(p) = prompts.remove(&id) && p.id != 0 { let _ = proxy.close_notification(p.id).await; } }

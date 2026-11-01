@@ -80,11 +80,7 @@ fn permission_layout() {
                 .build()
                 .unwrap(),
         );
-        let backend = Backend {
-            demo: true,
-            socket: PathBuf::new(),
-            credential: PathBuf::new(),
-        };
+        let backend = Backend::new(PathBuf::new(), PathBuf::new(), true);
         let mut snapshot = runtime.block_on(backend.snapshot(None)).unwrap();
         // Long build/cache paths keep the selectors and action buttons in the dialog.
         snapshot.pending[0].request.subject["process"] = serde_json::json!(format!(
@@ -242,5 +238,60 @@ fn permission_layout() {
             .unwrap()
             .save(output.join(format!("{theme}-missing-attribution.png")))
             .unwrap();
+        app.update_window(handle.into(), |view, window, cx| {
+            view.downcast::<Desktop>()
+                .unwrap()
+                .update(cx, |desktop, _| {
+                    desktop.state.confirmation = None;
+                    desktop.rule_field = None;
+                    let base = desktop.state.snapshot.pending[0].clone();
+                    desktop.state.snapshot.history = (0..10000)
+                        .map(|index| {
+                            let mut review = base.clone();
+                            review.id = format!("performance-{index}");
+                            review.state = ReviewState::Expired;
+                            review.created_at_ms -= index as i64 * 1000 + 1000;
+                            review
+                        })
+                        .collect();
+                });
+            let start = std::time::Instant::now();
+            window.draw(cx).clear(cx);
+            eprintln!(
+                "10001 loaded records: virtualized layout {} ms",
+                start.elapsed().as_millis()
+            );
+        })
+        .unwrap();
+        app.capture_screenshot(handle.into())
+            .unwrap()
+            .save(output.join(format!("{theme}-large-history.png")))
+            .unwrap();
+        assert!(
+            app.debug_bounds(handle.into(), "request-performance-9999")
+                .unwrap()
+                .is_none(),
+            "offscreen rows must not be constructed"
+        );
+        let row = app
+            .debug_bounds(handle.into(), "request-performance-0")
+            .unwrap()
+            .unwrap();
+        let latest = app
+            .debug_bounds(handle.into(), "request-latest-performance-0")
+            .unwrap()
+            .unwrap();
+        let pane = app
+            .debug_bounds(handle.into(), "request-scroll-container")
+            .unwrap()
+            .unwrap();
+        assert!(
+            row.right() <= pane.right() + px(1.),
+            "row must fit the list pane"
+        );
+        assert!(
+            latest.right() <= pane.right(),
+            "long subjects must leave timestamps visible"
+        );
     }
 }

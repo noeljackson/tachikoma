@@ -104,6 +104,8 @@ RUN --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \
 
 RUN XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a -s "-screen 0 1600x1000x24" python3 -u conformance/desktop/permissions.py
 
+RUN XDG_RUNTIME_DIR=/tmp/desktop-runtime WGPU_BACKEND=vulkan dbus-run-session -- xvfb-run -e /dev/stderr -a -s "-screen 0 1600x1000x24" python3 -u conformance/desktop/performance.py
+
 RUN --mount=type=cache,id=tachikoma-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=tachikoma-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=tachikoma-target,target=/app/target,sharing=locked \

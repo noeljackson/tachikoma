@@ -28,6 +28,7 @@ struct State {
     closing: bool,
 }
 pub struct Broker {
+    activity: Mutex<Option<crate::activity::Recorder>>,
     state: Mutex<State>,
     config: Config,
     jev_client: reqwest::Client,
@@ -40,6 +41,7 @@ impl Broker {
     pub fn new(config: Config, store: Store, demo: bool) -> Result<Arc<Self>> {
         config.validate()?;
         Ok(Arc::new(Self {
+            activity: Mutex::new(None),
             classifiers: Arc::new(Semaphore::new(config.classifier_concurrency)),
             state: Mutex::new(State {
                 pending: BTreeMap::new(),
@@ -239,6 +241,28 @@ impl Broker {
         )
     }
 
+    pub fn activity_start(&self, path: std::path::PathBuf) {
+        *self.activity.lock().expect("activity") = Some(crate::activity::Recorder::start(path));
+    }
+    pub fn activity_record(&self, stats: crate::protocol::Statistics) {
+        let recorder = self.activity.lock().expect("activity").clone();
+        if let Some(recorder) = recorder {
+            recorder.record(stats);
+        }
+    }
+    pub fn activity_page(
+        &self,
+        before: Option<i64>,
+        limit: usize,
+    ) -> Result<crate::activity::Page> {
+        let recorder = self
+            .activity
+            .lock()
+            .expect("activity")
+            .clone()
+            .ok_or_else(|| anyhow!("activity unavailable"))?;
+        recorder.page(before, limit)
+    }
     pub fn snapshot(&self) -> Result<Snapshot> {
         let state = self.state.lock().expect("broker lock");
         let mut pending: Vec<_> = state.pending.values().map(|p| p.entry.clone()).collect();
@@ -246,7 +270,16 @@ impl Broker {
         Ok(Snapshot {
             pending,
             history: state.store.recent(200)?,
-            health: state.health.clone(),
+            health: {
+                let mut health = state.health.clone();
+                health.activity = self
+                    .activity
+                    .lock()
+                    .expect("activity")
+                    .as_ref()
+                    .map(|recorder| recorder.status());
+                health
+            },
             mode: if self.config.tachikoma.as_ref().is_some_and(|c| !c.shadow) && !self.demo {
                 "Tachikoma manual approval"
             } else if self.config.tachikoma.is_some() && !self.demo {

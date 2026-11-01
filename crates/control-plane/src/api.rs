@@ -54,6 +54,7 @@ impl Api {
                 post(cancel_conversation),
             )
             .route("/events", get(events))
+            .route("/inbox", get(inbox))
             .route("/jobs/claim", post(claim))
             .route("/jobs/{id}/complete", post(complete))
             .route("/jobs/{id}/fail", post(fail))
@@ -293,21 +294,36 @@ async fn submit(State(api): State<Api>, headers: HeaderMap, body: Bytes) -> Repl
 struct ListQuery {
     before: Option<i64>,
     state: Option<String>,
+    limit: Option<usize>,
+    search: Option<String>,
+    queues: Option<String>,
 }
 async fn list(
     State(api): State<Api>,
     headers: HeaderMap,
     Query(query): Query<ListQuery>,
 ) -> Reply<Reviews> {
+    let selected: Option<Vec<String>> = query
+        .queues
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|_| Fault::bad())?;
     api.call(&headers, false, move |s, p| {
-        s.list(
+        s.list_filtered(
             p,
             query.before.unwrap_or(i64::MAX),
             query.state.as_deref().unwrap_or("pending"),
+            query.limit.unwrap_or(16).clamp(1, 100),
+            query.search.as_deref().unwrap_or(""),
+            selected.as_deref(),
         )
     })
     .await
     .map(Json)
+}
+async fn inbox(State(api): State<Api>, headers: HeaderMap) -> Reply<Inbox> {
+    api.call(&headers, false, |s, p| s.inbox(p)).await.map(Json)
 }
 async fn request(
     State(api): State<Api>,

@@ -24,3 +24,5 @@ pub mod tachikoma;
 pub mod context;
 
 pub mod popup;
+
+pub mod activity;

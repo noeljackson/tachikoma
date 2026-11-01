@@ -449,6 +449,14 @@ pub struct Events {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Inbox {
+    pub cursor: i64,
+    pub queues: Vec<QueueInfo>,
+    pub pending: Vec<Review>,
+    pub history: Reviews,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimJob {
     pub kind: String,
 }

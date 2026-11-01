@@ -23,6 +23,10 @@ const MAX_MESSAGE: usize = 16 * 1024 * 1024;
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
     Snapshot,
+    Activity {
+        before: Option<i64>,
+        limit: usize,
+    },
     Decide {
         id: String,
         action: Action,
@@ -53,6 +57,8 @@ pub struct Response {
     pub proposal: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<crate::activity::Page>,
 }
 
 pub fn private_dir(path: &Path) -> Result<()> {
@@ -142,11 +148,15 @@ async fn handle(stream: UnixStream, broker: Arc<Broker>) -> Result<()> {
     let command: Command = serde_json::from_slice(&read_message(&mut stream).await?)?;
     let result: Result<Response> = (|| {
         let mut response = Response {
+            activity: None,
             snapshot: None,
             proposal: None,
             error: None,
         };
         match command {
+            Command::Activity { before, limit } => {
+                response.activity = Some(broker.activity_page(before, limit)?)
+            }
             Command::Snapshot => response.snapshot = Some(broker.snapshot()?),
             Command::Decide {
                 id,
@@ -182,6 +192,7 @@ async fn handle(stream: UnixStream, broker: Arc<Broker>) -> Result<()> {
         Ok(response)
     })();
     let response = result.unwrap_or_else(|_| Response {
+        activity: None,
         snapshot: None,
         proposal: None,
         error: Some("Request rejected: stale ID, invalid operation, or storage failure".into()),

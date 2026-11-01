@@ -25,10 +25,12 @@ impl Ui for OpenSnitch {
         &self,
         request: Request<protocol::PingRequest>,
     ) -> Result<Response<protocol::PingReply>, Status> {
+        let request = request.into_inner();
         self.broker.ping();
-        Ok(Response::new(protocol::PingReply {
-            id: request.into_inner().id,
-        }))
+        if let Some(stats) = request.stats {
+            self.broker.activity_record(stats);
+        }
+        Ok(Response::new(protocol::PingReply { id: request.id }))
     }
     async fn ask_rule(
         &self,

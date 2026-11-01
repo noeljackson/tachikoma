@@ -221,6 +221,38 @@ impl Client {
         }
         Ok(reviews)
     }
+    pub async fn inbox(&self) -> Result<Inbox> {
+        self.call(Method::GET, "/inbox", None::<&()>).await
+    }
+    pub async fn history_page(
+        &self,
+        before: Option<i64>,
+        search: &str,
+        queues: Option<&[String]>,
+    ) -> Result<Reviews> {
+        let mut url = reqwest::Url::parse("http://local/requests")?;
+        {
+            let mut query = url.query_pairs_mut();
+            query
+                .append_pair("state", "history")
+                .append_pair("limit", "100");
+            if let Some(before) = before {
+                query.append_pair("before", &before.to_string());
+            }
+            if !search.is_empty() {
+                query.append_pair("search", search);
+            }
+            if let Some(queues) = queues {
+                query.append_pair("queues", &serde_json::to_string(queues)?);
+            }
+        }
+        self.call(
+            Method::GET,
+            &format!("{}?{}", url.path(), url.query().unwrap_or("")),
+            None::<&()>,
+        )
+        .await
+    }
     pub async fn get(&self, id: &str) -> Result<Review> {
         Self::valid_id(id)?;
         self.call(Method::GET, &format!("/requests/{id}"), None::<&()>)
