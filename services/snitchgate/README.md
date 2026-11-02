@@ -45,7 +45,9 @@ Defaults:
 
 Daemon-reported connection observations are recorded separately in private,
 bounded `activity.sqlite3`. `snitchgate activity` reads a page through the control
-socket. The original OpenSnitch GUI database is preserved. See
+socket. An optional `[opensnitch_database]` writer can also keep an existing
+schema-v3 GUI database current without the GUI handling approvals. It preserves
+old history and leaves arguments/cwd empty in new rows. See
 [connection activity and coverage](../../docs/connection-activity.md) for retained
 fields, limits and recording counters.
 

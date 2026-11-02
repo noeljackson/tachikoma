@@ -247,6 +247,8 @@ pub struct Health {
     pub alerts: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<crate::activity::Status>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opensnitch_database: Option<crate::opensnitch_db::Status>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

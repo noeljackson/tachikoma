@@ -26,3 +26,4 @@ pub mod context;
 pub mod popup;
 
 pub mod activity;
+pub mod opensnitch_db;

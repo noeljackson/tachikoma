@@ -126,6 +126,9 @@ async fn serve(
         false,
     )?;
     broker.activity_start(state.join("activity.sqlite3"));
+    if let Some(database) = &config.opensnitch_database {
+        broker.opensnitch_database_start(database.clone());
+    }
     let grpc_path = runtime.join("opensnitch.sock");
     let control_path = runtime.join("control.sock");
     let grpc = ipc::bind(&grpc_path)?;

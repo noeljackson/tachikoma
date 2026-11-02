@@ -56,6 +56,8 @@ impl Ui for OpenSnitch {
         request: Request<protocol::ClientConfig>,
     ) -> Result<Response<protocol::ClientConfig>, Status> {
         let config = request.into_inner();
+        self.broker
+            .opensnitch_database_identity(&config.name, &config.version);
         self.broker.subscribe(config.name, config.rules.len());
         // Empty config is deliberate. Echoing the daemon's config can cause it
         // to treat a UI connection as a request to change its settings.
