@@ -29,6 +29,7 @@ struct State {
 }
 pub struct Broker {
     activity: Mutex<Option<crate::activity::Recorder>>,
+    opensnitch_database: Mutex<Option<crate::opensnitch_db::Sink>>,
     state: Mutex<State>,
     config: Config,
     jev_client: reqwest::Client,
@@ -42,6 +43,7 @@ impl Broker {
         config.validate()?;
         Ok(Arc::new(Self {
             activity: Mutex::new(None),
+            opensnitch_database: Mutex::new(None),
             classifiers: Arc::new(Semaphore::new(config.classifier_concurrency)),
             state: Mutex::new(State {
                 pending: BTreeMap::new(),
@@ -244,7 +246,29 @@ impl Broker {
     pub fn activity_start(&self, path: std::path::PathBuf) {
         *self.activity.lock().expect("activity") = Some(crate::activity::Recorder::start(path));
     }
+    pub fn opensnitch_database_start(&self, config: crate::config::OpenSnitchDatabase) {
+        *self.opensnitch_database.lock().expect("database sink") =
+            Some(crate::opensnitch_db::Sink::start(config));
+    }
+    pub fn opensnitch_database_identity(&self, name: &str, version: &str) {
+        if let Some(sink) = self
+            .opensnitch_database
+            .lock()
+            .expect("database sink")
+            .clone()
+        {
+            sink.identity(name, version);
+        }
+    }
     pub fn activity_record(&self, stats: crate::protocol::Statistics) {
+        if let Some(sink) = self
+            .opensnitch_database
+            .lock()
+            .expect("database sink")
+            .clone()
+        {
+            sink.record(&stats);
+        }
         let recorder = self.activity.lock().expect("activity").clone();
         if let Some(recorder) = recorder {
             recorder.record(stats);
@@ -278,6 +302,12 @@ impl Broker {
                     .expect("activity")
                     .as_ref()
                     .map(|recorder| recorder.status());
+                health.opensnitch_database = self
+                    .opensnitch_database
+                    .lock()
+                    .expect("database sink")
+                    .as_ref()
+                    .map(|sink| sink.status());
                 health
             },
             mode: if self.config.tachikoma.as_ref().is_some_and(|c| !c.shadow) && !self.demo {

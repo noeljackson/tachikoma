@@ -134,6 +134,11 @@ it also removes `zstd`, `zstd-safe` and `zstd-sys` from the lockfile. This remov
 the dependency path rather than adding advisory exceptions. The central approval
 protocol and native desktop do not use this compression feature.
 
+The protobuf build chain's Markdown parser is pinned to `pulldown-cmark 0.13.6`
+to address [RUSTSEC-2026-0433](https://github.com/RustSec/advisory-db/blob/main/crates/pulldown-cmark/RUSTSEC-2026-0433.md).
+It processes protobuf documentation during the build; this patch adds no advisory
+exception or new parser use in an approval path.
+
 ## Decisions made in the OpenSnitch popup
 
 The optional fallback relay publishes returned popup actions to the **OpenSnitch

@@ -18,6 +18,7 @@ pub struct Config {
     pub automation: Vec<Scope>,
     pub approvals: ApprovalConfig,
     pub tachikoma: Option<TachikomaConfig>,
+    pub opensnitch_database: Option<OpenSnitchDatabase>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -31,8 +32,16 @@ impl Default for Config {
             automation: vec![],
             approvals: ApprovalConfig::default(),
             tachikoma: None,
+            opensnitch_database: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenSnitchDatabase {
+    pub path: PathBuf,
+    pub node: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -152,6 +161,19 @@ impl Config {
         Ok(config)
     }
     pub fn validate(&self) -> Result<()> {
+        if let Some(database) = &self.opensnitch_database {
+            ensure!(
+                database.path.is_absolute()
+                    && !database
+                        .path
+                        .components()
+                        .any(|c| matches!(c, std::path::Component::ParentDir))
+                    && !database.node.is_empty()
+                    && database.node.len() <= 256
+                    && !database.node.chars().any(char::is_control),
+                "OpenSnitch database requires an absolute path and a bounded node identity"
+            );
+        }
         if let Some(remote) = &self.tachikoma {
             ensure!(
                 remote.socket.is_absolute()

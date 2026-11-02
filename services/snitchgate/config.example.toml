@@ -4,6 +4,12 @@ max_pending = 256
 classifier_concurrency = 4
 history_limit = 10000
 
+# Optional compatibility history; must be an existing OpenSnitch schema-v3 file.
+# Back up first. See ../../docs/connection-activity.md. No schema migration or pruning.
+# [opensnitch_database]
+# path = "/absolute/path/to/existing/ui.sqlite3"
+# node = "unix:/local"
+
 [jev]
 enabled = false
 endpoint = "https://api.typesafe.ai/v1/systemone"
